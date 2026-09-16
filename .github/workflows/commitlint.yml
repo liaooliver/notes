@@ -1,0 +1,19 @@
+name: Commit Lint
+
+on:
+  pull_request:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  commitlint:
+    name: Validate Commit Messages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Lint Commits (Conventional Commits)
+        uses: wagoid/commitlint-github-action@v6

@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "mkdir -p dist && echo '<h1>Hello CI</h1>' > dist/index.html"
+    "build": "mkdir -p dist && echo '<h1>Hello CI</h1>' > dist/index.html",
+    "commitlint": "commitlint",
+    "prepare": "husky"
   },
   "repository": {
     "type": "git",
@@ -18,5 +20,10 @@
   "bugs": {
     "url": "https://github.com/liaooliver/notes/issues"
   },
-  "homepage": "https://github.com/liaooliver/notes#readme"
+  "homepage": "https://github.com/liaooliver/notes#readme",
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "husky": "^9.1.7"
+  }
 }
