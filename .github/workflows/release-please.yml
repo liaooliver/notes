@@ -2,11 +2,11 @@ name: Release Please
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write # 明確授權可以 Push Commit、打 Tag 與發 Release
+  pull-requests: write # 授權可以在 PR 下方自動留言
 
 jobs:
   release-please:
