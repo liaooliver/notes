@@ -11,6 +11,11 @@ jobs:
   build:
     name: Build Application
     runs-on: ubuntu-latest
+    # release-please 合併時產生的 commit 只改版本號/CHANGELOG，沒有程式碼變更，
+    # 跳過整條 pipeline；下游 white-box/encryption/ops-handoff 依賴 build，會自動跟著跳過。
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'chore(main): release')
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
