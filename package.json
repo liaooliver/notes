@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "mkdir -p dist && echo '<h1>Hello CI</h1>' > dist/index.html",
     "commitlint": "commitlint",
-    "prepare": "husky"
+    "prepare": "husky",
+    "release": "semantic-release"
   },
   "repository": {
     "type": "git",
@@ -24,6 +25,13 @@
   "devDependencies": {
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
-    "husky": "^9.1.7"
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.9",
+    "@semantic-release/npm": "^13.1.5",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "husky": "^9.1.7",
+    "semantic-release": "^25.0.9"
   }
 }

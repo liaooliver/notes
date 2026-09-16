@@ -6,16 +6,15 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# 預設最小權限；只有 release job 需要寫入權限，於該 job 另外覆寫。
+permissions:
+  contents: read
+
 jobs:
   # 1. Build 階段
   build:
     name: Build Application
     runs-on: ubuntu-latest
-    # release-please 合併時產生的 commit 只改版本號/CHANGELOG，沒有程式碼變更，
-    # 跳過整條 pipeline；下游 white-box/encryption/ops-handoff 依賴 build，會自動跟著跳過。
-    if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'chore(main): release')
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -106,3 +105,31 @@ jobs:
       - name: Execute Deployment
         run: |
           echo "審核通過，取得加密檔 dist.tar.gz.enc，開始執行發布邏輯..."
+
+  # 5. Release 階段 (build/掃描/加密/ops-handoff 全部通過後，才算版本號並發布)
+  release:
+    name: Semantic Release
+    needs: ops-handoff
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run semantic-release
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
