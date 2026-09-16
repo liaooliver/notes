@@ -1,0 +1,103 @@
+name: Enterprise CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # 1. Build 階段
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Build
+        run: npm run build
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-files
+          path: dist/
+          retention-days: 1
+
+  # 2. White-box 階段 (等效 Checkmarx / Mend / Trivy)
+  white-box:
+    name: White-box Security Scan
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2-1. SAST 靜態程式碼掃描 (等效 Checkmarx)
+      - name: Run Semgrep SAST
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/src" returntocorp/semgrep semgrep --config=p/ci /src
+
+      # 2-2. 依賴套件與檔案系統漏洞掃描 (等效 Mend + Trivy)
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1' # 抓到高風險 CVE 立即熔斷 Pipeline
+
+  # 3. Encryption 階段 (等效產物加密保護)
+  encryption:
+    name: Encrypt Artifacts
+    needs: white-box
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-files
+          path: dist
+
+      - name: Package and Encrypt Artifact
+        run: |
+          tar -czf dist.tar.gz dist/
+          openssl enc -aes-256-cbc -salt -pbkdf2 \
+            -in dist.tar.gz \
+            -out dist.tar.gz.enc \
+            -k "${{ secrets.DEPLOY_ENCRYPTION_KEY }}"
+
+      - name: Upload Encrypted Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-dist
+          path: dist.tar.gz.enc
+          retention-days: 7
+
+  # 4. Ops-handoff 階段 (等效運維審批與交付門禁)
+  ops-handoff:
+    name: Ops Handoff / Production Release
+    needs: encryption
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production # 綁定 Production 環境，觸發手動審核等待
+    steps:
+      - name: Download Encrypted Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: encrypted-dist
+
+      - name: Execute Deployment
+        run: |
+          echo "審核通過，取得加密檔 dist.tar.gz.enc，開始執行發布邏輯..."
