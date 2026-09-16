@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/liaooliver/notes/compare/notes-v1.2.0...notes-v1.2.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* add fix record to demo index page ([6c6a26e](https://github.com/liaooliver/notes/commit/6c6a26e38c484c296b6e35cda65fb46eee55e117))
+
 ## [1.2.0](https://github.com/liaooliver/notes/compare/notes-v1.1.0...notes-v1.2.0) (2026-09-16)
 
 
