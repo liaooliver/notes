@@ -1,0 +1,22 @@
+{
+  "name": "notes",
+  "version": "1.0.0",
+  "description": "個人筆記存放區。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "mkdir -p dist && echo '<h1>Hello CI</h1>' > dist/index.html"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/liaooliver/notes.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/liaooliver/notes/issues"
+  },
+  "homepage": "https://github.com/liaooliver/notes#readme"
+}
