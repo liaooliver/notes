@@ -90,3 +90,22 @@ jobs:
           git diff "origin/$BASE_REF"...HEAD -- . ':!package-lock.json' > pr.diff
           head -c 20000 pr.diff > pr-diff-truncated.txt
           wc -l pr.diff
+
+      - name: Build Prompt
+        run: |
+          {
+            echo "你是一個協助撰寫 PR 摘要的助手。"
+            echo "請閱讀以下 diff，用繁體中文條列出：這個 PR 改了什麼、可能的影響範圍。"
+            echo "如果 diff 被截斷，請只根據看得到的部分摘要，並註明可能不完整。"
+            echo ""
+            echo "Diff："
+            cat pr-diff-truncated.txt
+          } > prompt.txt
+
+      - name: Ask Gemini for PR Summary
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node scripts/llm/call-gemini.mjs --prompt-file prompt.txt > gemini-output.txt
+          cat gemini-output.txt
