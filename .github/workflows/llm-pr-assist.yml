@@ -109,3 +109,16 @@ jobs:
         run: |
           node scripts/llm/call-gemini.mjs --prompt-file prompt.txt > gemini-output.txt
           cat gemini-output.txt
+
+      - name: Post PR Summary Comment
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### 🤖 PR 摘要 (Gemini)"
+            echo ""
+            cat gemini-output.txt
+          } > comment-body.txt
+          gh pr comment "$PR_NUMBER" --body-file comment-body.txt
