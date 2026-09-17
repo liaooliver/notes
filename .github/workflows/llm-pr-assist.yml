@@ -8,6 +8,10 @@ permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: llm-pr-assist-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   commit-message-suggestion:
     name: Commit Message Suggestion
@@ -44,6 +48,7 @@ jobs:
           } > prompt.txt
 
       - name: Ask Gemini for Commit Message Suggestions
+        continue-on-error: true
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -51,6 +56,7 @@ jobs:
           cat gemini-output.txt
 
       - name: Post Commit Message Suggestion Comment
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
