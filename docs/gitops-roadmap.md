@@ -481,7 +481,7 @@ kubectl kustomize deploy/overlays/production
 > `ubuntu-latest` runner image 目前內建 `kustomize`（跟 `kubectl`、`helm` 一起列在 runner 的 installed software 清單）。
 > 若之後 runner image 拿掉了，加一步 `imranismail/setup-kustomize@v2` 即可；`kubectl kustomize` 只能 build 不能 `edit`，不能拿來替代。
 
-**這一步會撞到 `main` 的 branch protection**：目前 `main` 要求「必須透過 PR 合併」，`github-actions[bot]` 用 `GITHUB_TOKEN` 直接 `git push origin main` 會被 403 擋掉。這跟 [`release-automation.md`](./release-automation.md) 最後一節「已知的坑」講的是同一個問題，semantic-release 的 `@semantic-release/git` plugin push 版本 commit 時也會撞到。解法二選一：
+**這一步會撞到 `main` 的 branch protection**：目前 `main` 要求「必須透過 PR 合併」，`github-actions[bot]` 用 `GITHUB_TOKEN` 直接 `git push origin main` 會被 403 擋掉。semantic-release 的 `@semantic-release/git` 在 run #32 就被同一條規則擋下（GH006），當時的決定是不寫回 `main`，見 [`release-automation.md`](./release-automation.md) 第五階段。manifest bump 沒辦法用同樣的方式迴避，一定要有能 push 的身分。解法二選一：
 
 1. **Branch protection → 「Allow specified actors to bypass required pull requests」**：加 `github-actions[bot]`。最簡單，但等於 bot 可以繞過 PR 規則。
 2. **改用 Fine-grained PAT**（`contents: write`，存成 `DEPLOY_PUSH_TOKEN` secret）並把該帳號加入 bypass 名單。多一個要輪替的 secret，但權限邊界清楚。
@@ -656,7 +656,7 @@ git push
 
 ## 5. 要注意的坑
 
-- **`GITHUB_TOKEN` push 被 branch protection 擋（403）。** `main` / `staging` 都開了「Require a pull request before merging」，bot 直接 push 會失敗。Phase 4 的兩個 bump job 跟 semantic-release 的 git plugin 都會撞到。要在 branch protection 加 bypass actor，或改用 PAT。這是 [`release-automation.md`](./release-automation.md) 已經預告過的坑，Phase 4 一定會踩到。
+- **`GITHUB_TOKEN` push 被 branch protection 擋（403）。** `main` / `staging` 都開了「Require a pull request before merging」，bot 直接 push 會失敗。Phase 4 的兩個 bump job 都會撞到。要在 branch protection 加 bypass actor，或改用 PAT。semantic-release 已經在 run #32 踩過一次（見 [`release-automation.md`](./release-automation.md) 第五階段），Phase 4 一定會再踩到。
 
 - **CI 自己 push 會不會再觸發 `ci.yml`？** 兩層保險：(1) commit message 帶 `[skip ci]`，GitHub Actions 原生認得；(2) 用 `GITHUB_TOKEN` 產生的 push 本來就不會觸發新的 workflow run（GitHub 防無限迴圈的設計）。**但如果 Phase 4 改用 PAT，第 (2) 層保險就失效了，只剩 `[skip ci]`**，此時要再加第三層：`on.push.paths-ignore`。
 

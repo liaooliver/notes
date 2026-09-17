@@ -1,5 +1,7 @@
 # Changelog
 
+> 1.2.1 之後的版本不再寫進這個檔案，請看 [GitHub Releases](https://github.com/liaooliver/notes/releases)（tag `notes-vX.Y.Z`）。原因見 `docs/release-automation.md` 第五階段。
+
 ## [1.2.1](https://github.com/liaooliver/notes/compare/notes-v1.2.0...notes-v1.2.1) (2026-09-16)
 
 

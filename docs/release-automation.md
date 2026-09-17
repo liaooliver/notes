@@ -72,7 +72,7 @@ Release PR 合併 → push main（又一次！）
 `.releaserc.json`：
 
 - `tagFormat: "notes-v${version}"`——刻意延續 release-please 時代留下的 tag 命名習慣（`notes-v1.0.0` ~ `notes-v1.2.1`），讓版本號銜接不中斷，不是從頭重來。已經用本機 dry-run 驗證過：`Found git tag notes-v1.2.1 associated with version 1.2.1`，接續正確。
-- plugin pipeline：`commit-analyzer` → `release-notes-generator` → `changelog` → `npm`（`npmPublish: false`，只借它更新 `package.json` 版本號，不會真的發 npm 套件）→ `git`（commit 版本號 + CHANGELOG，訊息固定帶 `[skip ci]`）→ `github`（建 GitHub Release）。
+- plugin pipeline：`commit-analyzer` → `release-notes-generator` → `github`（打 tag、建 GitHub Release）。原本還有 `changelog` → `npm` → `git` 三個寫回 repo 的 plugin，第五階段拿掉了，原因見下。
 
 `.github/workflows/ci.yml`：
 
@@ -94,8 +94,36 @@ Release PR 合併 → push main（又一次！）
 
 同一輪還撞到另一個更早就存在的問題：`package-lock.json` 跟 `package.json` 不同步（`conventional-commits-filter` 鎖 5.0.0 但要求 `^6.0.0`），`npm ci` 直接以 `EUSAGE` 失敗，導致所有 PR 的 `Build Application` 都是紅的。用 `npm install` 重新產生 lock file、`npm ci --dry-run` 驗證後單獨開 PR #8 修掉。教訓：本機改 `package.json` 之後一定要連 lock file 一起 commit。
 
+## 第五階段：branch protection 擋下版本 commit（2026-09-18）
+
+run #32 approve 之後，`Semantic Release` 在 `@semantic-release/git` 的 prepare 步驟失敗：
+
+```
+git push --tags https://github.com/liaooliver/notes.git HEAD:main
+remote: error: GH006: Protected branch update failed for refs/heads/main.
+remote: - Changes must be made through a pull request.
+remote: - 3 of 3 required status checks are expected.
+```
+
+原因：semantic-release 是在 `main` **還沒有** branch protection 時設定的，1.2.x 都能正常把版本 commit 推回 `main`。
+之後替 `main` 加上「必須透過 PR」的保護，`GITHUB_TOKEN`（`github-actions[bot]`）也一樣要遵守，直接 push 就被拒絕。
+加保護時沒有馬上把發版流程跑一次，所以一直到第一次真的發版才發現。失敗發生在打 tag 之前，遠端沒有留下半套的版本。
+
+可選的解法：
+
+| 做法 | 代價 |
+| --- | --- |
+| **只打 tag + 發 Release，不寫回 repo**（採用） | `CHANGELOG.md`、`package.json` 的 `version` 不再更新 |
+| 建 GitHub App / PAT，加入 ruleset 的 bypass 名單 | 多一把權限很大的 token 要管理 |
+| 發版改成開 PR 由人 merge | 等於回到 release-please 的模式 |
+
+最後決定不寫回 `main`：`.releaserc.json` 只留 `commit-analyzer`、`release-notes-generator`、`github`，
+並從 `package.json` 移除 `@semantic-release/changelog`、`@semantic-release/git`、`@semantic-release/npm`。
+版本資訊以 tag `notes-vX.Y.Z` 與 GitHub Releases 為準；`CHANGELOG.md` 停在 1.2.1，檔案開頭加註說明。
+
+同一輪也把 `production` environment 的 Deployment branches 限定為 `main`，`ci.yml` 的 push 觸發只留 `main`（PR 已跑過的檢查不在 merge 進 `staging` 後重跑）。
+
 ## 已知的坑，還沒踩到但要留意
 
 - `package.json` 的 `build` script 目前只是 placeholder（`echo '<h1>Hello CI</h1>' > dist/index.html`），並沒有真的把 `src/` 複製進 `dist/`。現階段沒差，但要延伸到 Docker image 時就必須先修，`gitops-roadmap.md` 的 Phase 0 就是這件事。
-- `main` **現在已經設了** branch protection、要求「必須透過 PR 才能合併」（見 `branching-strategy.md`）。semantic-release 用 `GITHUB_TOKEN` 直接 push 版本 commit 到 `main` 這個動作**很可能會被擋下來**。截至 2026-09-17，PR #13 觸發的 run 還停在 `ops-handoff` 等審核，`release` job 尚未在有 protection 的狀態下跑過，所以這一點還沒被實際驗證。若真的被擋，解法有兩種：在 protection rule 加 bypass（允許 GitHub Actions app 略過），或改用有 bypass 權限的 PAT 取代 `GITHUB_TOKEN`。
-- 舊的 `CHANGELOG.md` 是 release-please 產生的格式，semantic-release 之後會用自己的格式接著往上疊，同一個檔案裡會有兩種格式並存，這是預期中的過渡痕跡，沒有特別去改寫歷史紀錄。
+- 上面「為什麼不需要再手動判斷版本 commit」那段講的 `[skip ci]` / `GITHUB_TOKEN` 機制，在第五階段之後已經用不到（不再有版本 commit），留著當作歷史紀錄。

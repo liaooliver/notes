@@ -29,7 +29,7 @@
 | UC-07 | merge PR 進 `staging` | 只有 Commit Lint | CI 不重跑（PR 階段已跑過 `build`、`white-box`） |
 | UC-08 | 開 PR `staging → main` | 同 UC-03（目標分支換成 `main`） | 輕量檢查，仍不發版 |
 | UC-09 | merge `staging → main` | CI 五個 job 全開，卡在 `ops-handoff` 等審核 | run 停在 Waiting |
-| UC-10 | Reviewer 在 production environment 按 Approve | `ops-handoff` → `release` | 算版號、寫 CHANGELOG、打 tag、開 Release |
+| UC-10 | Reviewer 在 production environment 按 Approve | `ops-handoff` → `release` | 算版號、打 tag、開 Release（不寫回 repo） |
 | UC-11 | Reviewer 按 Reject 或放著不管 | `ops-handoff` 不放行 | 不發版；放著最多等 30 天後 run 失敗 |
 | UC-12 | 不開 PR，直接 push `main` / `staging` | branch protection 拒絕 push | 本機收到 `protected branch` 錯誤 |
 | UC-13 | hotfix：從 `staging` 切 `fix/*` | UC-03 → UC-07 → UC-08 → UC-09 → UC-10 | 走一樣的路，只是 commit type 是 `fix:` |
@@ -380,9 +380,11 @@ sequenceDiagram
 **結果**：run 停在 `Ops Handoff / Production Release`。程式碼已經在 `main` 上了，但**沒有任何版本被發布**。
 「合併」跟「發布」被 environment 審核硬生生切成兩件事。
 
-**實際發生過的例證**：run #32（PR #13 的 merge commit `49263b9`）目前就停在這裡：
+**實際發生過的例證**：run #32（PR #13 的 merge commit `49263b9`）曾停在這裡：
 `Build Application` 12s ✅ → `White-box Security Scan` 36s ✅ → `Encrypt Artifacts` 5s ✅ → `Ops Handoff / Production Release` ⏸️ waiting → `Semantic Release` ⬜。
-這是刻意留著不 approve，用來觀察真正的人工把關長什麼樣子。
+當時刻意留著不 approve，用來觀察真正的人工把關長什麼樣子；approve 之後的結果見 UC-10。
+
+`production` environment 的 Deployment branches 限定 `main`：就算之後 `if` 條件被改壞，其他分支的 run 也進不了這個 environment。
 
 ```mermaid
 sequenceDiagram
@@ -423,19 +425,27 @@ sequenceDiagram
      1. `commit-analyzer`：從上一個 tag（例如 `notes-v1.2.1`）之後的 commit 決定要跳 major / minor / patch。`feat:` → minor，`fix:` → patch，`BREAKING CHANGE:` → major。
         只有 `chore:` / `docs:` 之類的話就**不發版**，job 仍是綠燈。
      2. `release-notes-generator`：產生 release notes。
-     3. `changelog`：寫進 `CHANGELOG.md`。
-     4. `npm`（`npmPublish: false`）：只改 `package.json` 的 `version`，不上傳 npm。
-     5. `git`：把 `package.json`、`package-lock.json`、`CHANGELOG.md` commit 回 `main`，訊息固定是 `chore(release): X.Y.Z [skip ci]`，並打 tag `notes-vX.Y.Z`。
-     6. `github`：建立 GitHub Release。
-3. 這個版本 commit 是用 `GITHUB_TOKEN` push 的，GitHub Actions 對 `GITHUB_TOKEN` 產生的 push **不會再觸發新的 workflow run**；
-   訊息裡的 `[skip ci]` 是第二層保險。所以不會出現「發版 → 又跑一次 pipeline → 又要審核」的無限迴圈。
+     3. `github`：在當下的 commit 打 tag `notes-vX.Y.Z`，建立 GitHub Release（notes 放在 Release 上）。
+3. **不 commit 回 `main`**：`main` 要求所有變更經過 PR，`GITHUB_TOKEN` 直接 push 會被拒絕（見下方例證）。
+   所以 `CHANGELOG.md` 與 `package.json` 的 `version` 停在 1.2.1，版本資訊以 tag 與 GitHub Releases 為準。
+   tag 不受 branch protection 管，push tag 不會被擋，也不會觸發新的 workflow run（`ci.yml` 只聽 branch push）。
 
-**結果**：`main` 多了一個版本 commit 與一個 tag，GitHub Releases 頁面多一筆，`CHANGELOG.md` 更新。
+**結果**：`main` 多一個 tag，GitHub Releases 頁面多一筆；repo 裡的檔案不變。
 
 **實際發生過的例證**：PR #10 那次是第一次真的走到這裡，`ops-handoff` 人工 approve 之後，`Semantic Release` 直接失敗：
 `[semantic-release]: node version ^22.14.0 || >= 24.10.0 is required. Found v20.20.2.`
 因為 `ci.yml` 的 `build` 和 `release` job 都還寫 `node-version: 20`。這個 bug 光讀 yml 看不出來，一定要整條跑到最後一步才會炸。
-PR #12 把兩個 job 都升到 Node 22，PR #13 再走一次 `staging → main` 來驗證，也就是現在停在 UC-09 的 run #32。
+PR #12 把兩個 job 都升到 Node 22，PR #13 再走一次 `staging → main` 來驗證，也就是 run #32。
+
+run #32 approve 之後，Node 版本沒問題了，卻在 `@semantic-release/git` 的 prepare 步驟失敗：
+
+```
+git push --tags https://github.com/liaooliver/notes.git HEAD:main
+remote: error: GH006: Protected branch update failed for refs/heads/main.
+remote: - Changes must be made through a pull request.
+```
+
+失敗發生在打 tag 之前，所以沒有留下半套的版本。修法是把 `git` / `changelog` / `npm` 三個 plugin 拿掉，改成只打 tag + 發 Release。
 
 ```mermaid
 sequenceDiagram
@@ -451,10 +461,9 @@ sequenceDiagram
     A->>S: npx semantic-release
     S->>S: commit-analyzer：比對上一個 tag 之後的 commit
     alt 有 feat / fix / BREAKING CHANGE
-        S->>S: release-notes-generator → changelog → npm（只改 version）
-        S->>G: git push：chore(release): X.Y.Z [skip ci] + tag notes-vX.Y.Z
-        S->>G: 建立 GitHub Release
-        Note over G,A: GITHUB_TOKEN 的 push 不會再觸發 workflow
+        S->>S: release-notes-generator
+        S->>G: 打 tag notes-vX.Y.Z + 建立 GitHub Release
+        Note over G,S: 不 commit 回 main（branch protection 不允許直接 push）
         S-->>A: 發版完成
     else 只有 chore / docs 等不影響版號的 commit
         S-->>A: 沒有需要發布的變更，正常結束
@@ -514,10 +523,8 @@ sequenceDiagram
 
 **結果**：什麼 workflow 都不會跑，因為 commit 根本沒進 remote。
 
-**要特別留意的坑**：semantic-release 在 UC-10 也是「直接 push 到 `main`」（用 `GITHUB_TOKEN`）。
-如果 branch protection 的 PR 規則沒有放行 GitHub Actions bot，`release` job 會在最後一步被同一條規則擋下來。
-這是 [release-automation.md](./release-automation.md) 已記錄的已知風險：需要在 protection 規則允許 Actions 略過，或改用有 bypass 權限的 PAT。
-run #32 approve 之後會是第一次在「main 有 branch protection」的狀態下真的跑 `release`，結果會回答這個問題。
+**CI 自己也受這條規則管**：原本 semantic-release 的 `@semantic-release/git` 在 UC-10 也是「直接 push 到 `main`」（用 `GITHUB_TOKEN`），
+run #32 就是被同一條規則擋下（GH006）。現在的設定不再寫回 `main`，只打 tag，見 UC-10 與 [release-automation.md](./release-automation.md)。
 
 ```mermaid
 sequenceDiagram
@@ -625,7 +632,6 @@ sequenceDiagram
 - `src/index.html`：表單送出後沒有 `reset()` 清空欄位。
 - 沒有機制阻止開發者直接開 PR `feature/* → main` 繞過 `staging`（branch protection 只管 required checks，不管來源分支）。
 - UC-14 提到的 `paths-ignore`。
-- UC-12 提到的 semantic-release 與 branch protection 相衝的風險，待 run #32 approve 後驗證。
 
 ## 這份文件對應的檔案
 
