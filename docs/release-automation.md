@@ -82,7 +82,20 @@ Release PR 合併 → push main（又一次！）
 
 **為什麼不需要再手動判斷「這是不是版本 commit」了：** semantic-release 的 commit 訊息固定帶 `[skip ci]`，這是 GitHub Actions 原生就認得的標記，遇到會直接不觸發整個 workflow，不需要自己寫字串比對邏輯。而且更根本的是：semantic-release 用 `GITHUB_TOKEN` 直接在 CI job 裡 push 版本 commit，GitHub Actions 對「用 `GITHUB_TOKEN` 產生的 push」本來就不會再觸發新的 workflow run（防止無限迴圈）——release-please 那種「重複觸發」的問題，是因為合併 Release PR 是人在 GitHub 網頁上按按鈕（算真人事件），跟 semantic-release 這種「CI 自己直接 push」的模式在機制上就不一樣，所以這個問題在新架構下基本上不會發生。
 
+## 第四階段：staging 分支與實跑踩到的坑
+
+架構改成 `feature/* → staging → main`（見 `branching-strategy.md`）之後，第一次真的把 `staging` 推進 `main` 跑完整 pipeline，一路 build → 掃描 → 加密 → 人工核准 production 都過了，最後一步 `Semantic Release` 卻掛掉：
+
+```
+[semantic-release]: node version ^22.14.0 || >= 24.10.0 is required. Found v20.20.2.
+```
+
+`semantic-release` v25 要 Node 22+，但 `ci.yml` 的 `build` 跟 `release` job 都寫 `node-version: 20`。這個錯誤**只看 workflow 檔看不出來**，一定要真的跑到最後一個 job 才會出現，所以整條流程從頭到尾實際走過一次是有價值的。修法是兩個 job 都升到 `node-version: 22`（PR #12），再把 `staging` 推進 `main`（PR #13）驗證。
+
+同一輪還撞到另一個更早就存在的問題：`package-lock.json` 跟 `package.json` 不同步（`conventional-commits-filter` 鎖 5.0.0 但要求 `^6.0.0`），`npm ci` 直接以 `EUSAGE` 失敗，導致所有 PR 的 `Build Application` 都是紅的。用 `npm install` 重新產生 lock file、`npm ci --dry-run` 驗證後單獨開 PR #8 修掉。教訓：本機改 `package.json` 之後一定要連 lock file 一起 commit。
+
 ## 已知的坑，還沒踩到但要留意
 
-- 如果之後真的把 main 設了 branch protection、要求「必須透過 PR 才能合併」，semantic-release 用 `GITHUB_TOKEN` 直接 push 版本 commit 到 main 這個動作會被擋下來，需要另外設定允許 Actions bot 略過這條規則，或改用有 bypass 權限的 PAT。目前沒開這個規則，所以還沟事，但要記住。
+- `package.json` 的 `build` script 目前只是 placeholder（`echo '<h1>Hello CI</h1>' > dist/index.html`），並沒有真的把 `src/` 複製進 `dist/`。現階段沒差，但要延伸到 Docker image 時就必須先修，`gitops-roadmap.md` 的 Phase 0 就是這件事。
+- `main` **現在已經設了** branch protection、要求「必須透過 PR 才能合併」（見 `branching-strategy.md`）。semantic-release 用 `GITHUB_TOKEN` 直接 push 版本 commit 到 `main` 這個動作**很可能會被擋下來**。截至 2026-09-17，PR #13 觸發的 run 還停在 `ops-handoff` 等審核，`release` job 尚未在有 protection 的狀態下跑過，所以這一點還沒被實際驗證。若真的被擋，解法有兩種：在 protection rule 加 bypass（允許 GitHub Actions app 略過），或改用有 bypass 權限的 PAT 取代 `GITHUB_TOKEN`。
 - 舊的 `CHANGELOG.md` 是 release-please 產生的格式，semantic-release 之後會用自己的格式接著往上疊，同一個檔案裡會有兩種格式並存，這是預期中的過渡痕跡，沒有特別去改寫歷史紀錄。
