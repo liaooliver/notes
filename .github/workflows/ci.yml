@@ -2,9 +2,9 @@ name: Enterprise CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "staging" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "staging" ]
 
 # 預設最小權限；只有 release job 需要寫入權限，於該 job 另外覆寫。
 permissions:
@@ -67,6 +67,7 @@ jobs:
     name: Encrypt Artifacts
     needs: white-box
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Download Build Artifact
         uses: actions/download-artifact@v4
