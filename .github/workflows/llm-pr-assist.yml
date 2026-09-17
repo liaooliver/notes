@@ -81,3 +81,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Collect PR Diff
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          git diff "origin/$BASE_REF"...HEAD -- . ':!package-lock.json' > pr.diff
+          head -c 20000 pr.diff > pr-diff-truncated.txt
+          wc -l pr.diff
