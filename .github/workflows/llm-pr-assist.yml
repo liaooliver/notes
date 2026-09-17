@@ -67,3 +67,17 @@ jobs:
             cat gemini-output.txt
           } > comment-body.txt
           gh pr comment "$PR_NUMBER" --body-file comment-body.txt
+
+  pr-diff-summary:
+    name: PR Diff Summary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
