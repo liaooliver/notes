@@ -1,0 +1,183 @@
+name: LLM PR Assist
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: llm-pr-assist-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  commit-message-suggestion:
+    name: Commit Message Suggestion
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Collect PR Commit Messages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr view "$PR_NUMBER" --json commits \
+            --jq '.commits[].messageHeadline' > commit-messages.txt
+          cat commit-messages.txt
+
+      - name: Build Prompt
+        run: |
+          {
+            echo "你是一個協助審查 Git commit message 的助手。"
+            echo "以下是這個 PR 的 commit 標題，請檢查是否符合 Conventional Commits 規範，"
+            echo "對不符合或不夠清楚的項目給出具體的改寫建議，使用繁體中文回覆，條列呈現。"
+            echo ""
+            echo "Commit 標題："
+            cat commit-messages.txt
+          } > prompt.txt
+
+      - name: Ask Gemini for Commit Message Suggestions
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node scripts/llm/call-gemini.mjs --prompt-file prompt.txt > gemini-output.txt
+          cat gemini-output.txt
+
+      - name: Post Commit Message Suggestion Comment
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### 🤖 Commit Message 建議 (Gemini)"
+            echo ""
+            cat gemini-output.txt
+          } > comment-body.txt
+          gh pr comment "$PR_NUMBER" --body-file comment-body.txt
+
+  pr-diff-summary:
+    name: PR Diff Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Collect PR Diff
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          git diff "origin/$BASE_REF"...HEAD -- . ':!package-lock.json' > pr.diff
+          head -c 20000 pr.diff > pr-diff-truncated.txt
+          wc -l pr.diff
+
+      - name: Build Prompt
+        run: |
+          {
+            echo "你是一個協助撰寫 PR 摘要的助手。"
+            echo "請閱讀以下 diff，用繁體中文條列出：這個 PR 改了什麼、可能的影響範圍。"
+            echo "如果 diff 被截斷，請只根據看得到的部分摘要，並註明可能不完整。"
+            echo ""
+            echo "Diff："
+            cat pr-diff-truncated.txt
+          } > prompt.txt
+
+      - name: Ask Gemini for PR Summary
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node scripts/llm/call-gemini.mjs --prompt-file prompt.txt > gemini-output.txt
+          cat gemini-output.txt
+
+      - name: Post PR Summary Comment
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### 🤖 PR 摘要 (Gemini)"
+            echo ""
+            cat gemini-output.txt
+          } > comment-body.txt
+          gh pr comment "$PR_NUMBER" --body-file comment-body.txt
+
+  code-review-comment:
+    name: Code Review Comment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Collect PR Diff
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          git diff "origin/$BASE_REF"...HEAD -- . ':!package-lock.json' > pr.diff
+          head -c 20000 pr.diff > pr-diff-truncated.txt
+          wc -l pr.diff
+
+      - name: Build Prompt
+        run: |
+          {
+            echo "你是一個資深工程師，正在做 code review。"
+            echo "請閱讀以下 diff，用繁體中文指出可能的 bug、安全性問題、或明顯可以簡化的地方。"
+            echo "如果沒有發現問題，直接說「沒有發現明顯問題」，不要硬找。條列呈現，保持簡潔。"
+            echo "如果 diff 被截斷，請只根據看得到的部分評論，並註明可能不完整。"
+            echo ""
+            echo "Diff："
+            cat pr-diff-truncated.txt
+          } > prompt.txt
+
+      - name: Ask Gemini for Code Review
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node scripts/llm/call-gemini.mjs --prompt-file prompt.txt > gemini-output.txt
+          cat gemini-output.txt
+
+      - name: Post Code Review Comment
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### 🤖 Code Review (Gemini)"
+            echo ""
+            cat gemini-output.txt
+          } > comment-body.txt
+          gh pr comment "$PR_NUMBER" --body-file comment-body.txt
