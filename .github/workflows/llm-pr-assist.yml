@@ -22,3 +22,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Collect PR Commit Messages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr view "$PR_NUMBER" --json commits \
+            --jq '.commits[].messageHeadline' > commit-messages.txt
+          cat commit-messages.txt
