@@ -31,3 +31,21 @@ jobs:
           gh pr view "$PR_NUMBER" --json commits \
             --jq '.commits[].messageHeadline' > commit-messages.txt
           cat commit-messages.txt
+
+      - name: Build Prompt
+        run: |
+          {
+            echo "你是一個協助審查 Git commit message 的助手。"
+            echo "以下是這個 PR 的 commit 標題，請檢查是否符合 Conventional Commits 規範，"
+            echo "對不符合或不夠清楚的項目給出具體的改寫建議，使用繁體中文回覆，條列呈現。"
+            echo ""
+            echo "Commit 標題："
+            cat commit-messages.txt
+          } > prompt.txt
+
+      - name: Ask Gemini for Commit Message Suggestions
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node scripts/llm/call-gemini.mjs --prompt-file prompt.txt > gemini-output.txt
+          cat gemini-output.txt
