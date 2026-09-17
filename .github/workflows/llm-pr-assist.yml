@@ -139,3 +139,32 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Collect PR Diff
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          git diff "origin/$BASE_REF"...HEAD -- . ':!package-lock.json' > pr.diff
+          head -c 20000 pr.diff > pr-diff-truncated.txt
+          wc -l pr.diff
+
+      - name: Build Prompt
+        run: |
+          {
+            echo "你是一個資深工程師，正在做 code review。"
+            echo "請閱讀以下 diff，用繁體中文指出可能的 bug、安全性問題、或明顯可以簡化的地方。"
+            echo "如果沒有發現問題，直接說「沒有發現明顯問題」，不要硬找。條列呈現，保持簡潔。"
+            echo "如果 diff 被截斷，請只根據看得到的部分評論，並註明可能不完整。"
+            echo ""
+            echo "Diff："
+            cat pr-diff-truncated.txt
+          } > prompt.txt
+
+      - name: Ask Gemini for Code Review
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node scripts/llm/call-gemini.mjs --prompt-file prompt.txt > gemini-output.txt
+          cat gemini-output.txt
