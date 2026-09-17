@@ -61,11 +61,47 @@ async function callGemini(prompt) {
   return text.trim();
 }
 
+const RATE_LIMIT_FALLBACK = '_(LLM 建議暫時不可用：Gemini 免費額度已達上限，請稍後再試)_';
+const GENERIC_FALLBACK = '_(LLM 建議暫時不可用：呼叫 Gemini API 時發生錯誤)_';
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function callGeminiWithRetry(prompt) {
+  try {
+    return await callGemini(prompt);
+  } catch (error) {
+    if (error.status === 429) {
+      console.error('Gemini rate limit hit, retrying once after backoff...');
+      await sleep(5000);
+      try {
+        return await callGemini(prompt);
+      } catch (retryError) {
+        if (retryError.status === 429) {
+          console.error(retryError.message);
+          return RATE_LIMIT_FALLBACK;
+        }
+        throw retryError;
+      }
+    }
+    throw error;
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const prompt = await resolvePrompt(args);
-  const result = await callGemini(prompt);
-  console.log(result);
+
+  try {
+    const result = await callGeminiWithRetry(prompt);
+    console.log(result);
+  } catch (error) {
+    console.error(error.message);
+    console.log(GENERIC_FALLBACK);
+  }
 }
 
 main();
