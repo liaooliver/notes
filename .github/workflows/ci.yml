@@ -1,8 +1,10 @@
 name: Enterprise CI/CD Pipeline
 
 on:
+  # staging 的 PR 已經跑過 build + white-box，merge 後不再重跑；
+  # main 的 push 仍需要重跑，因為 encryption 要用同一個 run 的 build 產物。
   push:
-    branches: [ "main", "staging" ]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main", "staging" ]
 
