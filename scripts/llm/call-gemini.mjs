@@ -62,7 +62,11 @@ async function callGemini(prompt) {
 }
 
 const RATE_LIMIT_FALLBACK = '_(LLM 建議暫時不可用：Gemini 免費額度已達上限，請稍後再試)_';
+const OVERLOADED_FALLBACK = '_(LLM 建議暫時不可用：Gemini 服務目前負載過高，請稍後再試)_';
 const GENERIC_FALLBACK = '_(LLM 建議暫時不可用：呼叫 Gemini API 時發生錯誤)_';
+
+// 429 = 額度用完，503 = 伺服器暫時過載，兩者都值得重試一次
+const TRANSIENT_STATUSES = new Set([429, 503]);
 
 function sleep(ms) {
   return new Promise((resolve) => {
@@ -70,19 +74,25 @@ function sleep(ms) {
   });
 }
 
+function fallbackForStatus(status) {
+  if (status === 429) return RATE_LIMIT_FALLBACK;
+  if (status === 503) return OVERLOADED_FALLBACK;
+  return GENERIC_FALLBACK;
+}
+
 async function callGeminiWithRetry(prompt) {
   try {
     return await callGemini(prompt);
   } catch (error) {
-    if (error.status === 429) {
-      console.error('Gemini rate limit hit, retrying once after backoff...');
+    if (TRANSIENT_STATUSES.has(error.status)) {
+      console.error(`Gemini transient error (${error.status}), retrying once after backoff...`);
       await sleep(5000);
       try {
         return await callGemini(prompt);
       } catch (retryError) {
-        if (retryError.status === 429) {
+        if (TRANSIENT_STATUSES.has(retryError.status)) {
           console.error(retryError.message);
-          return RATE_LIMIT_FALLBACK;
+          return fallbackForStatus(retryError.status);
         }
         throw retryError;
       }
