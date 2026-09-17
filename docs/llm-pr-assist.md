@@ -28,4 +28,15 @@ Gemini 免費層超過額度會回傳 HTTP 429。這幾個 job 是輔助性質�
   push 時會取消還在跑的舊執行，避免重複呼叫浪費額度
 - 每個 job 都有 `timeout-minutes: 10`，避免呼叫卡住佔用 runner 時間
 
-這組 workflow 完全不會影響 `ci.yml` 的 build / 掃描 / 加密 / release 流程，兩者互相獨立。
+Gemini 除了 429 也會回 HTTP 503（model 過載），`call-gemini.mjs` 把 429 / 503 都視為暫時性錯誤，
+同樣重試一次後回 fallback 文字。實際發生過的三種失敗：
+
+| 現象 | 原因 | 處理 |
+| --- | --- | --- |
+| 「model is no longer available」 | `gemini-2.0-flash` 被 Google 汰換 | 依錯誤訊息把預設 model 改成 `gemini-3.6-flash` |
+| 「currently experiencing high demand」 | HTTP 503，model 過載 | 重試一次，仍失敗就貼 fallback 留言 |
+| 免費額度用完 | HTTP 429 | 同上 |
+
+這組 workflow 完全不會影響 `ci.yml` 的 build / 掃描 / 加密 / release 流程，兩者互相獨立；
+三個 job 也**沒有**列入 branch protection 的 required checks，所以 Gemini 掛了不會擋 merge。
+各種 PR 情境下這三個 job 何時觸發、何時被取消，見 `use-cases.md`。
