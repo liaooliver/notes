@@ -26,7 +26,7 @@
 | UC-04 | 在同一個 PR 上再 push 新 commit | 同 UC-03 全部重跑；LLM 舊 run 被取消 | 檢查結果以最新 commit 為準 |
 | UC-05 | PR 的 test 掛掉或 Trivy 抓到 HIGH CVE | `build` 或 `white-box` 失敗 | branch protection 擋住 merge |
 | UC-06 | PR 期間 Gemini 回 429 / 503 / model 汰換 | LLM job 走 fallback | 留言變成提示文字，PR 不受影響 |
-| UC-07 | merge PR 進 `staging` | Commit Lint；CI 的 `build`、`white-box` | 不加密、不審核、不發版 |
+| UC-07 | merge PR 進 `staging` | 只有 Commit Lint | CI 不重跑（PR 階段已跑過 `build`、`white-box`） |
 | UC-08 | 開 PR `staging → main` | 同 UC-03（目標分支換成 `main`） | 輕量檢查，仍不發版 |
 | UC-09 | merge `staging → main` | CI 五個 job 全開，卡在 `ops-handoff` 等審核 | run 停在 Waiting |
 | UC-10 | Reviewer 在 production environment 按 Approve | `ops-handoff` → `release` | 算版號、寫 CHANGELOG、打 tag、開 Release |
@@ -77,7 +77,7 @@ sequenceDiagram
 
 1. commit 通過本機 husky（同 UC-01）。
 2. push 到 GitHub 成功，分支出現在 remote。
-3. `ci.yml` 與 `commitlint.yml` 的 `push` 事件只監聽 `branches: ["main", "staging"]`；`llm-pr-assist.yml` 只監聽 `pull_request`。
+3. `ci.yml` 的 `push` 事件只監聽 `main`，`commitlint.yml` 的 `push` 只監聽 `main` / `staging`；`llm-pr-assist.yml` 只監聽 `pull_request`。
    三個 workflow 都不符合條件。
 
 **結果**：Actions 頁面一個 run 都不會多。功能分支上可以盡情 push，成本是零；檢查全部延後到「開 PR」那一刻。
@@ -301,12 +301,12 @@ sequenceDiagram
 **依序發生什麼**：
 
 1. `commitlint.yml`：`push.branches` 包含 `staging` → 再檢一次 commit 訊息。
-2. `ci.yml`：`push.branches` 包含 `staging` → `build` + `white-box` 再跑一次（這次是 merge 後的實際內容）。
-3. `encryption` / `ops-handoff` / `release` 的 `if` 條件要求 `github.ref == 'refs/heads/main'`，`staging` 不符合 → 不出現。
+2. `ci.yml`：`push.branches` 只有 `main` → 整份不觸發。`build` + `white-box` 已經在 PR 階段（UC-03）跑過，merge 後不再重跑。
+3. `encryption` / `ops-handoff` / `release` 自然也不會出現。
 4. `llm-pr-assist.yml` 只聽 `pull_request` → 不觸發。PR 已關閉，也不會再有留言。
 
 **結果**：`staging` 累積了新功能，但沒有加密、沒有審核、沒有版號變動。可以連續 merge 很多個 PR 進 `staging`，
-每次都只付「build + 掃描」的成本。
+merge 本身只付 commit lint 的成本。
 
 ```mermaid
 sequenceDiagram
@@ -315,13 +315,8 @@ sequenceDiagram
     participant A as Actions
     D->>G: 按 Merge（PR → staging）
     G->>A: push (refs/heads/staging)
-    par Commit Lint
-        A->>A: Validate Commit Messages
-    and Enterprise CI/CD Pipeline
-        A->>A: Build Application
-        A->>A: White-box Security Scan
-        Note over A: encryption / ops-handoff / release 因 ref 不是 main，不出現
-    end
+    A->>A: Validate Commit Messages
+    Note over A: ci.yml 的 push 只聽 main，不觸發（PR 階段已跑過 build + white-box）
     Note over G,A: llm-pr-assist 只聽 pull_request，不觸發
     A-->>G: run 完成，無版號變動
 ```

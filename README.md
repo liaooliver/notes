@@ -26,10 +26,10 @@ feature/* ──PR──▶ staging ──PR──▶ main ──(approve)──
 
 | 檔案 | 觸發 | 做什麼 |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | push / PR 到 `main`、`staging` | build → test → 白盒掃描 →（僅 main push）加密 → 審核 → 發版 |
+| `.github/workflows/ci.yml` | PR 到 `main`、`staging`；push 到 `main` | build → test → 白盒掃描 →（僅 main push）加密 → 審核 → 發版 |
 | `.github/workflows/commitlint.yml` | 所有 PR、push 到 `main`、`staging` | 檢查 commit 訊息符合 Conventional Commits |
 | `.github/workflows/llm-pr-assist.yml` | 所有 PR | Gemini 產生 commit 建議 / PR 摘要 / code review 留言 |
 
 ---
 
-*最後更新：2026-09-17*
+*最後更新：2026-09-18*
