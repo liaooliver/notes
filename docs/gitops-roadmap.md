@@ -22,7 +22,7 @@ git commit / git push
 
 | 現有 job（`ci.yml`） | 現在做的事 | 對應目標流程 | 處置 |
 | --- | --- | --- | --- |
-| `build` | `npm ci` → `npm test` → `npm run build` → 上傳 `dist/` artifact | **test / build** | **沿用**。但 `package.json` 的 `build` script 目前是 placeholder（只 echo 一個 `<h1>`），必須先修（Phase 0），否則 image 裡沒有真正的 `src/`。 |
+| `build` | `npm ci` → `npm test` → `npm run build` → 上傳 `dist/` artifact | **test / build** | **沿用**。`build` script 原本是 placeholder（只 echo 一個 `<h1>`），Phase 0 已修成複製 `src/`。 |
 | `white-box` | Semgrep SAST + Trivy `fs` 掃描 | **CI 安全閘** | **沿用**。之後可加一個 Trivy `image` 掃描步驟，對剛 build 好的 image 再掃一次（Phase 7）。 |
 | `encryption` | `tar` + `openssl aes-256-cbc` 加密 `dist/`，上傳 `dist.tar.gz.enc` | 無直接對應 | **重新定位或拿掉**。在 image 世界裡，「保護交付產物」的做法是 registry 權限控管 + image 簽章（cosign），不是把 tarball 加密。建議：Phase 2 加了 `docker` job 之後把 `encryption` 移除；想保留「產物完整性」這個學習點就改成 cosign keyless 簽章（Phase 7）。 |
 | `ops-handoff` | `environment: production` 等人工核准 → `echo` 一句話 | **GitHub Environment Approval → 更新 manifest image tag** | **沿用審核機制、替換執行內容**。把 `echo` 換成 `kustomize edit set image` + commit 回 repo（Phase 4）。這就是「人按下 Approve」到「Argo CD 開始部署」之間唯一的橋。 |
@@ -147,9 +147,9 @@ sequenceDiagram
 
 延續這個專案「一次一小片、一個 commit、一個 PR」的習慣。每個 Phase 都能獨立開 PR 到 `staging`、獨立驗證、獨立回退。**不要一次做完再開一張大 PR。**
 
-### Phase 0：修 `package.json` 的 `build` script
+### Phase 0：修 `package.json` 的 `build` script（已完成）
 
-目前：
+原本：
 
 ```json
 "build": "mkdir -p dist && echo '<h1>Hello CI</h1>' > dist/index.html"

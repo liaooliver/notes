@@ -338,7 +338,7 @@ sequenceDiagram
 Gemini 的 PR 摘要在這裡特別有用：它會把 `staging` 上累積的所有變更一次列出來。
 
 **實際發生過的例證**：PR #13 就是這種 PR；Gemini 的 review 在這裡指出 `package.json` 的 `build` script 只是 placeholder，
-根本沒把 `src/` 複製進 `dist/`（尚未修正，記在 [已知問題](#已知問題與未來優化點)）。
+根本沒把 `src/` 複製進 `dist/`（之後由 `fix(build)` 修正，對應 gitops-roadmap 的 Phase 0）。
 
 ```mermaid
 sequenceDiagram
@@ -625,7 +625,6 @@ sequenceDiagram
 
 以下是本 session 中由 Gemini review 或實際運行觀察到、但尚未處理的項目：
 
-- `package.json` 的 `build` script 仍是 placeholder（只 echo 一個 `<h1>` 進 `dist/`），沒有真的把 `src/index.html`、`src/app.js` 打包進去。
 - `scripts/llm/call-gemini.mjs`：`response.json()` 在檢查 `response.ok` 之前呼叫，非 JSON 的錯誤頁（502 / 504）會在 `error.status` 設好之前就丟 `SyntaxError`，讓重試邏輯失效。
 - `scripts/llm/call-gemini.mjs`：`parseArgs` 沒有檢查 `--prompt` / `--prompt-file` 是否為最後一個參數。
 - `llm-pr-assist.yml`：`pr-diff-summary` 與 `code-review-comment` 收集 diff 的步驟完全重複；`head -c 20000` 以 byte 截斷可能切到多位元組的中文字。

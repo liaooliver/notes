@@ -125,5 +125,5 @@ remote: - 3 of 3 required status checks are expected.
 
 ## 已知的坑，還沒踩到但要留意
 
-- `package.json` 的 `build` script 目前只是 placeholder（`echo '<h1>Hello CI</h1>' > dist/index.html`），並沒有真的把 `src/` 複製進 `dist/`。現階段沒差，但要延伸到 Docker image 時就必須先修，`gitops-roadmap.md` 的 Phase 0 就是這件事。
+- ~~`package.json` 的 `build` script 只是 placeholder~~：已改成 `cp src/index.html src/app.js dist/`（`gitops-roadmap.md` 的 Phase 0）。
 - 上面「為什麼不需要再手動判斷版本 commit」那段講的 `[skip ci]` / `GITHUB_TOKEN` 機制，在第五階段之後已經用不到（不再有版本 commit），留著當作歷史紀錄。
