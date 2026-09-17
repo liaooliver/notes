@@ -16,6 +16,7 @@ jobs:
   commit-message-suggestion:
     name: Commit Message Suggestion
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -71,6 +72,7 @@ jobs:
   pr-diff-summary:
     name: PR Diff Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
