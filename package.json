@@ -4,7 +4,7 @@
   "description": "個人筆記存放區。",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test",
     "build": "mkdir -p dist && echo '<h1>Hello CI</h1>' > dist/index.html",
     "commitlint": "commitlint",
     "prepare": "husky",

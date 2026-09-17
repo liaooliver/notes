@@ -8,5 +8,24 @@
 <body>
     <h1>Try Demo</h1>
     <h2>add fix record</h2>
+
+    <form id="fix-record-form">
+        <input type="date" id="fix-date" required>
+        <input type="text" id="fix-title" placeholder="fix title" required>
+        <button type="submit">Add</button>
+    </form>
+    <ul id="fix-record-list"></ul>
+
+    <script src="app.js"></script>
+    <script>
+        document.getElementById('fix-record-form').addEventListener('submit', (event) => {
+            event.preventDefault();
+            const date = document.getElementById('fix-date').value;
+            const title = document.getElementById('fix-title').value;
+            const item = document.createElement('li');
+            item.textContent = formatFixRecord(date, title);
+            document.getElementById('fix-record-list').appendChild(item);
+        });
+    </script>
 </body>
 </html>
