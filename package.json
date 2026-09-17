@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test",
-    "build": "mkdir -p dist && echo '<h1>Hello CI</h1>' > dist/index.html",
+    "build": "rm -rf dist && mkdir -p dist && cp src/index.html src/app.js dist/",
     "commitlint": "commitlint",
     "prepare": "husky",
     "release": "semantic-release"
