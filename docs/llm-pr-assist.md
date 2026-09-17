@@ -14,7 +14,8 @@
 1. 到 [Google AI Studio](https://aistudio.google.com/apikey) 建立一組免費的 API key
 2. 在 repo 的 Settings → Secrets and variables → Actions 新增 secret：`GEMINI_API_KEY`
 3. 不需要額外安裝 SDK，`call-gemini.mjs` 直接用 Node 20 內建的 `fetch` 打 REST API
-4. 預設 model 是 `gemini-2.0-flash`（免費層額度最高），可用 `GEMINI_MODEL` 環境變數覆寫
+4. 預設 model 是 `gemini-3.6-flash`，可用 `GEMINI_MODEL` 環境變數覆寫。Google 會不時汰換舊 model，
+   若 job log 出現「model is no longer available」，依錯誤訊息建議的新 model 名稱更新這裡即可
 
 ## 免費額度用完時的處理
 
