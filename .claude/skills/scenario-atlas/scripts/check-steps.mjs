@@ -22,12 +22,13 @@ const html = readFileSync(page, 'utf8');
 const articles = [...html.matchAll(/<article class="case" id="(uc-\d+)"[\s\S]*?<\/article>/g)];
 let bad = 0;
 for (const [article, id] of articles) {
-  const src = article.match(/<script type="text\/plain">\n?([\s\S]*?)<\/script>/);
+  const src = article.match(/<script[^>]*type="text\/plain"[^>]*>\n?([\s\S]*?)<\/script>/i);
   if (!src) { console.log(`${id}: no sequence diagram`); continue; }
   const model = S.parse(src[1]);
   const L = S.layout(model);
   const rows = L.rows.filter((r) => r.t !== 'block');
-  const steps = [...article.matchAll(/data-steps="([^"]+)"/g)].flatMap((m) => m[1].split(' ').map(Number));
+  // trim + /\s+/：data-steps="3 4 " 用 split(' ') 會切出空字串，Number('') 是 0，會憑空多一個步驟 0
+  const steps = [...article.matchAll(/data-steps="([^"]+)"/g)].flatMap((m) => m[1].trim().split(/\s+/).map(Number));
   const out = steps.filter((s) => !(s >= 0 && s < rows.length));
   const snips = (article.match(/class="snip"/g) || []).length;
   console.log(`${id}: ${rows.length} steps, ${snips} snippets ${out.length ? 'OUT OF RANGE ' + out.join(',') : 'ok'}`);
