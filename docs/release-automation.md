@@ -158,6 +158,7 @@ run #39 完整跑完 build → white-box → encryption → ops-handoff（人工
 
   目前只是警告、不影響結果（GitHub 已自動改用 Node 24 跑），但之後 v4 會停止支援。要把這四個 action 升到 v5。
   跟 `node-version: 22` 是兩件不同的事：那個是「workflow 裡跑我們自己的 `npm` 指令用哪個 Node」，
-  這個是「action 本身的 JS 用哪個 Node runtime 執行」。`gitops-roadmap.md` Phase 2 要加的 `docker/*` action 之後也會遇到同一波。
+  這個是「action 本身的 JS 用哪個 Node runtime 執行」。`gitops-roadmap.md` Phase 2 的範例已經直接用 v5 寫，
+  所以那些新加的 step 不會再踩一次；要處理的是 `ci.yml` 裡既有的四個 v4。
 - **`ubuntu-latest` 會在 2026-10-19 起遷移到 Ubuntu 26。** run #39 的 notice 提到。目前 workflow 沒有綁特定 OS 版本的東西，
   但 `white-box` job 直接 `docker run` semgrep、Phase 1 之後還會加 docker build，遷移當下值得重跑一次確認。

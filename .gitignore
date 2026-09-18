@@ -1,2 +1,5 @@
 node_modules/
 dist/
+
+# 本機用的規劃草稿，不進版控
+ROADMAP-REPLAN.md
