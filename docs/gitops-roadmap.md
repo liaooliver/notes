@@ -1044,6 +1044,21 @@ Argo CD 官方 manifest 是 multi-arch 的，arm64 上直接能跑。7 個元件
 
 > **Argo CD UI 為什麼用 port-forward，不用 Ingress？** `argocd-server` 預設自己就跑 HTTPS，要走 Traefik 得處理 TLS passthrough 或給它加 `--insecure` 參數，對第一次接觸的人是不必要的岔路。應用程式走 Ingress（那才是要練的），Argo CD UI 用 port-forward 就好。
 
+##### 5.5 建 namespace 與 Argo CD Application
+
+**先看你的 repo 是 public 還是 private，兩條路不一樣：**
+
+```
+public repo  → 建 namespace → 建 Argo CD Application（本節做完就結束）
+
+private repo → 建 namespace
+             → 先跳到 Phase 6 建 ghcr-pull secret
+             → 取消 web + api 兩份 Deployment 的 imagePullSecrets 註解
+             → 再回來本節套用 Application
+```
+
+順序反了的話，Argo CD 會先把 Deployment 套進叢集，pod 立刻卡在 `ImagePullBackOff`，而 Argo CD UI 上顯示的是 `Progressing`（它認為自己做完了，是 k8s 拉不到 image），你會花時間懷疑是不是 image 沒 build 成功。
+
 建兩個 namespace：
 
 ```bash
@@ -1121,13 +1136,13 @@ spec:
 
 建議先開 `automated`，體驗完整自動鏈路；之後想練「Argo CD 手動 sync + rollback UI」再關掉。
 
-驗證：`kubectl apply -f deploy/argocd/`，Argo CD UI 應該看到兩個 Application 從 Missing → Progressing → Healthy/Synced；`kubectl -n notes-staging get pods` 有 notes pod Running（前提是 Phase 6 的 pull secret 已建好）。
+驗證：`kubectl apply -f deploy/argocd/`，Argo CD UI 應該看到兩個 Application 從 Missing → Progressing → Healthy/Synced；`kubectl -n notes-staging get pods` 有 notes pod Running（private repo 的前提見本節開頭的分岔）。
 
 #### Phase 6：GHCR pull 權限與對外存取
 
 GHCR 的 package 預設跟 repo 同可見性。`liaooliver/notes` 若是 public repo，package 也是 public，**k3s 可以直接 pull，不需要 secret** —— Phase 3 的 `web-deployment.yaml` 裡 `imagePullSecrets` 已經是註解狀態，維持註解即可。
 
-> **順序很重要。** 若 repo 是 private，**必須先做完這一節建好 secret，才能建 Argo CD Application（Phase 5.5）**。反過來的話 Argo CD 會先把 Deployment 套進去，pod 立刻卡在 `ImagePullBackOff`，然後你要花時間懷疑是不是 image 沒 build 成功。正確順序：
+> **順序很重要。** 若 repo 是 private，**必須先做完這一節建好 secret，才能建 Argo CD Application（第 5.5 節）**。反過來的話 Argo CD 會先把 Deployment 套進去，pod 立刻卡在 `ImagePullBackOff`，然後你要花時間懷疑是不是 image 沒 build 成功。正確順序：
 >
 > ```
 > 建 namespace → 建 ghcr-pull secret → 取消 imagePullSecrets 的註解 → 建 Argo CD Application
@@ -1145,9 +1160,22 @@ for ns in notes-staging notes-production; do
 done
 ```
 
-然後把 `deploy/base/web-deployment.yaml` 裡 `imagePullSecrets` 那兩行的註解拿掉。
+然後把 `imagePullSecrets` 那兩行的註解拿掉——**`deploy/base/web-deployment.yaml` 與 `deploy/base/api-deployment.yaml` 兩份都要**（第二輪加了 api 之後才有第二份）。
+
+> **只改一份的症狀特別難查**：web 起得來、畫面正常出現，只有打 API 的時候 500。你會先去翻 Express 的程式碼、翻 Ingress 的 `/api` 規則，繞一大圈才想到去 `kubectl get pods` 看 api pod 其實卡在 `ImagePullBackOff`。整個掛掉反而好查。
 
 > 第二輪加了 `notes-api` 之後，GHCR 上會有**兩個** package，它們的可見性是各自獨立的。同一把 `ghcr-pull` secret 對兩個都有效（憑證綁帳號不綁 package），但若只把其中一個設成 public，另一個會單獨卡在 `ImagePullBackOff`。
+
+> **另一種做法：把 secret 掛在 ServiceAccount 上，而不是每個 Deployment 上。**
+>
+> ```bash
+> kubectl -n notes-staging patch serviceaccount default \
+>   -p '{"imagePullSecrets":[{"name":"ghcr-pull"}]}'
+> ```
+>
+> 一行就覆蓋整個 namespace 裡所有用 `default` ServiceAccount 的 pod，之後加第三、第四個服務都不用再改 manifest。
+>
+> **但本文不採用**，因為它是 imperative 的：這個設定只存在叢集裡，不在 Git 裡，Argo CD 看不到也管不到。哪天重建叢集，manifest 全部套得回來，唯獨這行會被忘記，症狀是「同一份 Git 內容，在新叢集跑不起來」。這正是 GitOps 想消滅的那種狀態——**叢集的真實狀態有一部分沒有對應的 Git 來源**。知道有這招（別人的叢集可能就是這樣設的），但自己寫的東西放進 manifest。
 
 驗證：`kubectl -n notes-staging describe pod <pod>`，Events 不再有 `ErrImagePull` / `ImagePullBackOff`。
 
@@ -1171,7 +1199,7 @@ Chrome
   → VM 的 :80
   → Traefik（k3s 內建的 Ingress controller）
        看 Host header 決定送給哪個 Ingress 規則
-  → Service notes
+  → Service notes-web
   → Pod → nginx → index.html
 ```
 
@@ -1181,7 +1209,7 @@ Chrome
 | --- | --- |
 | 瀏覽器連不上、逾時 | `ping notes-staging.local` 通不通 → `/etc/hosts` 的 IP 對不對 |
 | 404 page not found（Traefik 的白底頁） | `kubectl -n notes-staging get ingress` → `host` 欄位跟你打的網址一不一樣 |
-| 502 / 503 | `kubectl -n notes-staging get endpoints notes` → Service 的 selector 有沒有對到 pod |
+| 502 / 503 | `kubectl -n notes-staging get endpoints notes-web` → Service 的 selector 有沒有對到 pod |
 | 頁面出來但內容不對 | `kubectl -n notes-staging describe pod <pod>` 看 image tag 是不是你預期的那個 sha |
 
 > **VM 重開之後 IP 可能會變**，`/etc/hosts` 就失效了。每次重開先 `multipass info k3s` 確認一次；想固定住可以查 `multipass networks` 用 bridged 網路配固定 IP，但學習階段手動改一行比較省事。
@@ -1372,6 +1400,10 @@ spec:
         app: notes
         component: api
     spec:
+      # repo 是 public 時 GHCR package 也是 public，不需要 secret，這兩行先註解掉。
+      # 改成 private 時，web 與 api 兩份 Deployment 要一起取消註解（見 Phase 6）。
+      # imagePullSecrets:
+      #   - name: ghcr-pull
       containers:
         - name: api
           image: ghcr.io/liaooliver/notes-api    # ← 另一個 image，tag 由 overlay 覆寫
