@@ -213,20 +213,25 @@ flowchart LR
 
 ### 2.2 manifest 要放哪裡：同 repo `deploy/` vs 獨立 `notes-deploy` repo
 
-| | 同 repo（`deploy/` 目錄） | 獨立 repo（`liaooliver/notes-deploy`） |
-| --- | --- | --- |
-| 上手難度 | 低：一個 repo、一組 secret、一條 PR 流程 | 中：要多管一個 repo，CI 要有跨 repo push 權限（PAT 或 GitHub App） |
-| 循環觸發風險 | **有**：CI 改了 `deploy/` 再 push，會再觸發 `ci.yml`。要靠 `[skip ci]` 或 `paths-ignore` 擋 | 無：app repo 的 workflow 不會因 deploy repo 的 commit 觸發 |
-| 權限分離 | 弱：能改程式碼的人就能改部署設定 | 強：可以只給運維 deploy repo 的 write 權限 |
-| Argo CD 設定 | `repoURL` 指同一個 repo、`path: deploy/overlays/xxx` | `repoURL` 指 deploy repo |
-| 審計 | 部署歷史跟程式碼歷史混在一起 | 部署歷史獨立乾淨（`git log` 全是 image bump） |
-| 業界慣例 | 小專案 / 單人 / 學習用 | 多團隊、多服務、正式環境 |
+| | 同 repo、`deploy/` 在受保護分支上 | 同 repo、但 Argo CD 讀不受保護的 `deploy` 分支 | 獨立 repo（`liaooliver/notes-deploy`） |
+| --- | --- | --- | --- |
+| 上手難度 | 低：一個 repo、一組 secret、一條 PR 流程 | 低：一個 repo，多一條長期分支 | 中：要多管一個 repo，CI 要有跨 repo push 權限（PAT 或 GitHub App） |
+| **會不會撞 branch protection** | **會，而且這是 Phase 4 的核心難題**（見 Phase 4「這一步會撞到 branch protection」） | 不會：那條分支不設保護，`GITHUB_TOKEN` 直接能 push | 不會：deploy repo 不必設保護 |
+| 循環觸發風險 | **有**：CI 改了 `deploy/` 再 push，會再觸發 `ci.yml`。要靠 `[skip ci]` 或 `paths-ignore` 擋 | 低：`ci.yml` 的 `on.push.branches` 本來就沒列 `deploy`，不會被觸發 | 無：app repo 的 workflow 不會因 deploy repo 的 commit 觸發 |
+| 權限分離 | 弱：能改程式碼的人就能改部署設定 | 弱：同一個 repo 的 write 權限就能改 | 強：可以只給運維 deploy repo 的 write 權限 |
+| Argo CD 設定 | `repoURL` 指同一個 repo、`path: deploy/overlays/xxx` | 同左，但 `targetRevision: deploy` | `repoURL` 指 deploy repo |
+| 審計 | 部署歷史跟程式碼歷史混在一起 | 部署歷史在自己的分支上，`git log deploy` 全是 image bump | 部署歷史獨立乾淨（`git log` 全是 image bump） |
+| 代價 | 需要能 push 進受保護分支的身分 | 多一條要記得存在的分支；`deploy` 分支不會自動跟上 `main` 的程式碼，兩邊的 `git log` 對不起來；rollback 要在那條分支上操作 | 多一個 repo、跨 repo 憑證 |
+| 業界慣例 | 小專案 / 單人 / 學習用 | 少見，但完全合法（Argo CD 的 `targetRevision` 本來就支援） | 多團隊、多服務、正式環境 |
 
 **建議：先用同 repo `deploy/` 目錄。** 理由：
 
 1. 這個專案是單人學習用，多一個 repo 只會增加「secret 跨 repo」這種跟 GitOps 本質無關的摩擦。
 2. 循環觸發的問題有標準解法（見第 5 節），而且**親自踩一次這個坑正是學習的一部分**。
 3. 之後要拆出去很容易：`git subtree split -P deploy` 就能把 `deploy/` 目錄連歷史一起搬到新 repo，Argo CD 只要改 `repoURL`。
+
+> **但這個建議有一個前提還沒驗證。** 第一欄的「會撞 branch protection」那格不是小麻煩——在 classic branch protection 底下它可能**根本無解**（詳見 Phase 4 的 4-a）。
+> 如果 4-a 的結論是「必須把 `main` / `staging` 遷成 ruleset，或另外建一個 GitHub App」，**請回來重讀這一節**：改一條不受保護的 `deploy` 分支，成本很可能比動整個 repo 的保護機制低，而且不會削弱 `main` 的保護強度。
 
 ### 2.3 完整時序：merge `staging → main` 到 production pod 換新
 
@@ -255,7 +260,7 @@ sequenceDiagram
     GA->>GA: 確認 origin/main 仍等於 GITHUB_SHA<br/>(不相等就中止，避免部署舊版)
     GA->>GA: kustomize edit set image<br/>(deploy/overlays/production)
     GA->>GH: git push main<br/>"chore(deploy): bump production image to sha-... [skip ci]"
-    Note over GH,GA: 用 GITHUB_TOKEN push + [skip ci]，不會再觸發 ci.yml
+    Note over GH,GA: 用 GITHUB_TOKEN push + [skip ci]，不會再觸發 ci.yml<br/>(push 身分與目標分支待 Phase 4-a 決定)
     GA->>GA: release (semantic-release 打 tag、發 Release)
 
     alt 偵測方式 A：polling（預設，每 3 分鐘）
@@ -849,22 +854,104 @@ jobs:
 > `ubuntu-latest` runner image 目前內建 `kustomize`（跟 `kubectl`、`helm` 一起列在 runner 的 installed software 清單）。
 > 若之後 runner image 拿掉了，加一步 `imranismail/setup-kustomize@v2` 即可；`kubectl kustomize` 只能 build 不能 `edit`，不能拿來替代。
 
-**這一步會撞到 `main` 的 branch protection**：目前 `main` 要求「必須透過 PR 合併」，`github-actions[bot]` 用 `GITHUB_TOKEN` 直接 `git push origin main` 會被 403 擋掉。semantic-release 的 `@semantic-release/git` 在 run #32 就被同一條規則擋下（GH006），當時的決定是不寫回 `main`，見 [`release-automation.md`](./release-automation.md) 第五階段；run #39 已驗證那條 tag-only 路徑可行（第六階段）。但 manifest bump 沒辦法用同樣的方式迴避——發版可以「不寫回 repo」，改 image tag 不行，一定要有能 push 的身分。解法二選一：
+##### 這一步會撞到 branch protection，而且問題比「換一把 token」大
 
-1. **Branch protection →「Allow specified actors to bypass required pull requests」**：加 `github-actions[bot]`。最簡單，但等於 bot 可以繞過 PR 規則。
-2. **改用 Fine-grained PAT**（`contents: write`，存成 `DEPLOY_PUSH_TOKEN` secret）並把該帳號加入 bypass 名單。多一個要輪替的 secret，但權限邊界清楚。
+`main` 目前要求「必須透過 PR 合併」，`github-actions[bot]` 用 `GITHUB_TOKEN` 直接 `git push origin main` 會被擋掉。semantic-release 的 `@semantic-release/git` 在 run #32 就被擋過（GH006），當時的決定是不寫回 `main`，見 [`release-automation.md`](./release-automation.md) 第五階段；run #39 已驗證那條 tag-only 路徑可行（第六階段）。
 
-##### 定案：用做法 1，而且不對主 CI 加 `paths-ignore`
+**但 manifest bump 退無可退**——發版可以「不寫回 repo」，改 image tag 不行，一定要有一個能 push 進受保護分支的身分。
 
-這三件事必須綁在一起決定，只挑其中一兩件會互相打架：
+先看清楚 run #32 到底被幾條規則擋下：
+
+```
+remote: error: GH006: Protected branch update failed for refs/heads/main.
+remote: - Changes must be made through a pull request.      ← 規則 A
+remote: - 3 of 3 required status checks are expected.       ← 規則 B
+```
+
+**是兩條，不是一條。** 這件事決定了整個解法的形狀，因為 GitHub 有兩套互不相同的保護機制：
+
+| | classic branch protection | ruleset |
+| --- | --- | --- |
+| 設定位置 | Settings → Branches | Settings → Rules → Rulesets |
+| 豁免名單的範圍 | 只有「Allow specified actors to bypass **required pull requests**」——顧名思義只解掉規則 A | bypass list 是**整組規則一起豁免**，A 和 B 都解掉 |
+| 規則 B 能不能對特定身分豁免 | **不能**。唯一開關是「Include administrators」，而 `github-actions[bot]` 永遠不可能是 admin | 能，bypass list 涵蓋 |
+| 被擋下時的錯誤碼 | `GH006: Protected branch update failed` | `GH013: Repository rule violations found` |
+
+關鍵在於：bump commit 帶 `[skip ci]`、又是 bot 產生的 push，**三個 required check 一個都不會跑**，所以規則 B 必然觸發。在 classic 底下，規則 B 沒有任何身分能豁免——**換成 GitHub App token 或 PAT 也一樣會失敗**，因為 token 種類不會讓 status check 憑空通過。
+
+所以真正的決定矩陣是這樣，橫軸是機制不是 token：
+
+| | classic protection | ruleset + bypass |
+| --- | --- | --- |
+| `GITHUB_TOKEN`（`github-actions[bot]`） | 規則 B 無解，判斷會失敗 | 待測：個人 repo 的 bypass list 能不能選到 bot |
+| GitHub App token（`actions/create-github-app-token@v2`） | 規則 B 無解，也會失敗 | 可行；代價是「bot push 不觸發 workflow」那層保險消失 |
+| Fine-grained PAT | 同上，失敗 | **不採用**：綁個人帳號、會過期、權限是帳號層級 |
+
+**這是「要不要把 `main` / `staging` 從 classic 遷到 ruleset」的決定，不是「用哪把 token」的決定。**
+`release-automation.md` 第五階段當初列的「建 GitHub App / PAT，加入 **ruleset** 的 bypass 名單」，重點一直在後半句。
+
+> **run #32 的錯誤碼已經洩露了一半答案。** 那次的輸出是 `GH006`，代表 `main` 現在走的是 classic——也就是矩陣的左欄，而左欄三格都是失敗。不過眼見為憑，動手前還是到 Settings 看一眼（30 秒，比推論可靠）。
+
+##### 4-a. 動手之前：盤點保護機制並實測
+
+三個步驟，順序不能顛倒：
+
+**1. 盤點（人工，30 秒）**：Settings → Branches 和 Settings → Rules，確認 `main` / `staging` 現在各自是 classic 還是 ruleset。兩條分支可能不一樣。
+
+**2. 決定**：若是 classic，要不要遷 ruleset？這會牽動第 2.2 節（manifest 放哪裡）——如果不想動保護機制，那一節的第三個選項（不受保護的 `deploy` 分支）成本可能更低。**兩件事一起決定，不要分開。**
+
+**3. 實測**：把下面這個 workflow 放到一條拋棄式分支上，push 上去就會跑。
+
+```yaml
+# .github/workflows/push-smoke-test.yml
+# 放在拋棄式分支 chore/push-smoke-test 上，測完連分支一起刪。
+on:
+  push:
+    branches: [chore/push-smoke-test]
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v5
+        with: { ref: staging, fetch-depth: 0 }
+      - run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "chore: verify bot push permission [skip ci]"
+          git push origin HEAD:staging
+```
+
+> **為什麼用 `push` 觸發而不是 `workflow_dispatch`？** `workflow_dispatch` 的 workflow 必須存在於**預設分支**才叫得出來——放在其他分支上，Actions 頁面的 Run workflow 下拉選單根本不會列出它。用它就得先開 PR 進 `main`、合併、手動觸發、再開一張 PR 刪掉，`main` 平白被動兩次。
+> `push` 觸發沒有這個限制：**workflow 檔案「所在」的分支，和它「push 目標」的分支，是兩件獨立的事**。檔案待在拋棄式分支，job 照樣能 push 到 `staging`。
+
+實測時要記得的三件事：
+
+- **先測 `staging`，通過再測 `main`。** 兩條分支的規則可能不同，`staging` 的結論不能直接套到 `main`。
+- **保留策略：不 revert，保留那筆 empty commit。** `git revert` 一個空 commit 會直接報 `nothing to commit`；硬要清只能 force-push，而受保護分支正好做不到。commit 訊息本身就是記錄，保留最乾淨。
+- **失敗時錯誤碼就是答案。** `GH006` 代表 classic、`GH013` 代表 ruleset，底下列出的規則會直接告訴你是 A 還是 B 擋的，決定你落在矩陣的哪一格。
+
+##### 未定案：先確認保護機制；但 `paths-ignore` 已經定案不加
+
+三件事必須綁在一起決定，只挑其中一兩件會互相打架：
 
 | 決定 | 選擇 | 不這樣做會怎樣 |
 | --- | --- | --- |
-| 誰來 push bump commit | **`GITHUB_TOKEN`（`github-actions[bot]`）+ bypass 名單**，`main` / `staging` 都要設 | 用 PAT 的話，「`GITHUB_TOKEN` 的 push 不會觸發新 workflow」這層保險會失效，只剩 `[skip ci]` |
+| 誰來 push bump commit | **待 4-a 決定**（見下表） | 直接照抄別人的 `GITHUB_TOKEN` 寫法，會在 Phase 4 第一次跑就紅掉，而且錯誤訊息只說「protected branch」，不會告訴你是機制選錯了 |
 | 主 CI 要不要加 `paths-ignore: ['deploy/**']` | **不加** | 加了之後，純 `deploy/**` 的 PR 不會跑 `Build Application`，required status check 會**永遠 Pending 卡住 merge**——第一次要 rollback（`git revert` bump commit 再開 PR 進 `main`）就會撞到 |
 | `deploy/**` 怎麼驗證 | **另開一個永遠會跑的輕量 job** | 沒有的話 manifest 寫錯要等 Argo CD 才發現 |
 
-不加 `paths-ignore` 的代價是 bump commit 會讓 CI 空跑一次 —— 但實際上不會，因為 `GITHUB_TOKEN` 產生的 push 本來就不觸發新的 workflow run，`[skip ci]` 是第二層保險。**`paths-ignore` 是為了擋一個已經被擋住的問題，卻引進一個真實的 merge 死結，不划算。**
+第一列的三條分支：
+
+| 4-a 的結論 | Phase 4 要怎麼寫 |
+| --- | --- |
+| 維持 classic | **不可能讓 bot push 成功**（規則 B 無解）→ 改走第 2.2 節的不受保護 `deploy` 分支方案，或回頭遷 ruleset |
+| 遷 ruleset，且 bot 可選為 bypass actor | 維持 `GITHUB_TOKEN`，本節範例一字不改；`[skip ci]` +「bot push 不觸發 workflow」兩層保險都在 |
+| 遷 ruleset，但只能選 GitHub App | 改用 `actions/create-github-app-token@v2`，`actions/checkout` 要帶 `token:`；**「不觸發 workflow」那層保險消失，`[skip ci]` 成為唯一防線**；`paths-ignore` 仍然不准加，理由見下 |
+
+後兩列維持定案不動——它們的理由跟用哪把 token、哪套機制都無關。
+
+不加 `paths-ignore` 的代價是 bump commit 可能讓 CI 空跑一次。若最後用的是 `GITHUB_TOKEN`，連這個代價都沒有，因為它產生的 push 本來就不觸發新的 workflow run，`[skip ci]` 是第二層保險；若用 App token，就只剩 `[skip ci]` 這一層，但它已經夠用。**無論哪一種，`paths-ignore` 都是為了擋一個已經被擋住的問題，卻引進一個真實的 merge 死結，不划算。**
 
 第三項要新增的 job（放在 `ci.yml`，PR 與 push 都跑，不受任何 path filter 影響）：
 
@@ -1543,11 +1630,11 @@ git push
 
 ### CI / CD
 
-- **`GITHUB_TOKEN` push 被 branch protection 擋（403）。** `main` / `staging` 都開了「Require a pull request before merging」，bot 直接 push 會失敗。Phase 4 的兩個 bump job 都會撞到。要在 branch protection 加 bypass actor，或改用 PAT。semantic-release 已經在 run #32 踩過一次（見 [`release-automation.md`](./release-automation.md) 第五階段），Phase 4 一定會再踩到。差別是 semantic-release 可以退讓成「只打 tag」，Phase 4 退無可退，所以動手做 Phase 4 之前就要先把 bypass 或 PAT 準備好，不要等 CI 紅了才處理。
+- **`GITHUB_TOKEN` push 被 branch protection 擋，而且「換一把 token」救不了。** run #32 的 GH006 同時列出兩條規則：「必須透過 PR」與「3 個 required status check」。前者在 classic branch protection 底下能用 bypass 名單解掉，**後者不能**——classic 沒有針對特定身分的 status check 豁免，唯一開關是「Include administrators」，而 `github-actions[bot]` 不可能是 admin。bump commit 帶 `[skip ci]`，三個 check 一個都不會跑，所以第二條必然觸發，**改用 GitHub App token 或 PAT 一樣失敗**。真正的變數是 classic 還是 ruleset（ruleset 的 bypass list 是整組豁免）。動手做 Phase 4 之前先做 4-a 的盤點與 smoke test，不要等 CI 紅了才處理。辨識法：被擋時 `GH006` = classic、`GH013` = ruleset。
 
-- **CI 自己 push 會不會再觸發 `ci.yml`？** 兩層保險：(1) commit message 帶 `[skip ci]`，GitHub Actions 原生認得；(2) 用 `GITHUB_TOKEN` 產生的 push 本來就不會觸發新的 workflow run（GitHub 防無限迴圈的設計）。**但如果 Phase 4 改用 PAT，第 (2) 層保險就失效了，只剩 `[skip ci]`**，此時要再加第三層：`on.push.paths-ignore`。
+- **CI 自己 push 會不會再觸發 `ci.yml`？** 兩層保險：(1) commit message 帶 `[skip ci]`，GitHub Actions 原生認得；(2) 用 `GITHUB_TOKEN` 產生的 push 本來就不會觸發新的 workflow run（GitHub 防無限迴圈的設計）。**但如果 Phase 4 最後改用 GitHub App token（或 PAT），第 (2) 層保險就失效了，只剩 `[skip ci]`**——它已經夠用。**不要因此去加第三層 `on.push.paths-ignore`**，那會引進一個真正的死結，理由見下一條。
 
-- **`paths-ignore` 是陷阱，不要加。** 直覺上會想用 `paths-ignore: ['deploy/**']` 避免 bump commit 觸發 CI，但這會造成一個真實的死結：純 `deploy/**` 改動的 PR 不會跑 `Build Application`，**required status check 永遠停在 Pending，PR 再也 merge 不進去** —— 而第一次要 rollback（`git revert` bump commit 再開 PR 進 `main`）改的就只有 `deploy/**`。它擋的那個問題（循環觸發）本來就已經被 `GITHUB_TOKEN` + `[skip ci]` 兩層擋住了。定案：**不加 `paths-ignore`，改用一個永遠會跑的 `manifest-check` job**（見 Phase 4）。
+- **`paths-ignore` 是陷阱，不要加。** 直覺上會想用 `paths-ignore: ['deploy/**']` 避免 bump commit 觸發 CI，但這會造成一個真實的死結：純 `deploy/**` 改動的 PR 不會跑 `Build Application`，**required status check 永遠停在 Pending，PR 再也 merge 不進去** —— 而第一次要 rollback（`git revert` bump commit 再開 PR 進 `main`）改的就只有 `deploy/**`。它擋的那個問題（循環觸發）本來就已經被擋住了——用 `GITHUB_TOKEN` 是兩層，用 App token 是 `[skip ci]` 一層，兩種都夠。定案：**不加 `paths-ignore`，改用一個永遠會跑的 `manifest-check` job**（見 Phase 4）。
 
 - **bump job 的競態：兩次 push 靠太近，舊 run 會把舊 image 寫回 manifest。** `IMAGE_TAG` 來自觸發時的 `github.sha`，但 `checkout ref: staging` 拿到的是**執行當下**的 HEAD，兩者之間可能已經隔了另一次 push。`bump-production` 尤其危險，因為它會停在人工審核等好幾小時。三道防線：workflow 層 `concurrency: deploy-${{ github.ref }}`（且 `cancel-in-progress: false`，不要砍掉已 Approve 的部署）、bump 前比對 `origin/<branch>` 是否仍等於 `GITHUB_SHA`、push 失敗要讓 job 紅掉。詳見 Phase 4。
 
