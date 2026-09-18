@@ -2,6 +2,7 @@
 
 > **狀態：設計稿，尚未實作。** 本文描述如何把目前 `ci.yml` 的 5 個 job 延伸成下面這條完整的 GitOps 鏈路。
 > 所有 YAML / shell 片段都是為了讓每個 Phase 可以直接開 PR 而寫的草案，實際落地時請依當時的 action 版本與環境調整。
+> 互動版：[GitOps Roadmap Artifact](https://claude.ai/artifact/9EbPRiqXcJY8ZrqcJXputd)（可逐步播放的架構流程圖）
 
 ```
 git commit / git push
