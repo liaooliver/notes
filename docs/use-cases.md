@@ -449,6 +449,10 @@ remote: - Changes must be made through a pull request.
 
 失敗發生在打 tag 之前，所以沒有留下半套的版本。修法是把 `git` / `changelog` / `npm` 三個 plugin 拿掉，改成只打 tag + 發 Release。
 
+run #39（PR #18 把 `staging` 累積的 4 個 PR promote 到 `main`）是這個修法第一次真的跑完：5 個 job 全綠，
+`Run semantic-release` 42s 正常結束，打出 `notes-v1.3.0` 與對應的 GitHub Release，`main` 的 tip 仍是那個 merge commit。
+上面這一整段流程從第 3 點開始都是照著 run #39 的實際結果寫的，不再是推測。
+
 ```mermaid
 sequenceDiagram
     participant R as Reviewer
