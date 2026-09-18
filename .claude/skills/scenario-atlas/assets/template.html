@@ -1,0 +1,176 @@
+<title>＜主題名稱＞</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* 把 theme.css 的內容整段貼進來（Artifact 的 CSP 不允許外部 stylesheet，只能 inline） */
+</style>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">＜主題名稱＞ <small>＜副標／來源＞</small></div>
+    <div class="filters" role="group" aria-label="依階段篩選">
+      <!-- data-filter 對應每個 article / tr / li 的 data-stage；'all' 固定要有 -->
+      <button class="chip" data-filter="all" aria-pressed="true">全部 N</button>
+      <button class="chip" data-filter="stage-a" aria-pressed="false">階段 A</button>
+      <button class="chip" data-filter="stage-b" aria-pressed="false">階段 B</button>
+    </div>
+  </div>
+</header>
+
+<div class="page">
+  <nav class="nav" aria-label="案例目錄">
+    <h3>案例</h3>
+    <ol id="nav-list">
+      <li data-stage="stage-a"><a href="#uc-01"><span class="id">UC-01</span><span class="label">短標題</span></a></li>
+    </ol>
+    <h3>其他</h3>
+    <ol>
+      <li><a href="#overview"><span class="id">表</span><span class="label">總覽</span></a></li>
+      <li><a href="#issues"><span class="id">待辦</span><span class="label">已知問題</span></a></li>
+      <li><a href="#files"><span class="id">檔案</span><span class="label">對應檔案</span></a></li>
+    </ol>
+  </nav>
+
+  <main class="main">
+    <section class="intro">
+      <h1>＜一句話說明這份文件回答什麼問題＞</h1>
+      <p class="lede">＜兩三句導言，說明範圍、日期基準＞</p>
+      <div class="flow" aria-label="主流程">
+        <span class="node">起點</span><span class="arrow">──▶</span>
+        <span class="node gate">關卡</span><span class="arrow">──▶</span>
+        <span class="node">終點</span>
+      </div>
+      <div class="legend" aria-label="參與者">
+        <div><b>參與者 A</b><span>一句話定義</span></div>
+        <div><b>參與者 B</b><span>一句話定義</span></div>
+      </div>
+    </section>
+
+    <section class="overview" id="overview">
+      <h2>總覽</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>案例</th><th>動作</th><th>觸發什麼</th><th>結果</th></tr></thead>
+          <tbody id="overview-body">
+            <tr data-stage="stage-a"><td><span class="id">UC-01</span></td><td><a href="#uc-01">動作</a></td><td>觸發</td><td><span class="pill pass">結果</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <h2 class="cases-heading" style="margin-top:44px">逐條情境</h2>
+    <p class="empty" id="empty">這個階段沒有案例。</p>
+    <div class="cases" id="cases">
+
+      <!-- 每個案例一個 article；id 必須是 uc-NN，build-snippets.mjs 靠它對應 snippets -->
+      <article class="case" id="uc-01" data-stage="stage-a">
+        <div class="case-head"><span class="id">UC-01</span><span class="stage">階段名</span><span class="pill pass">結果標籤</span></div>
+        <h2>案例標題</h2>
+        <dl class="story">
+          <div><dt>情境</dt><dd>誰、在什麼情況下、做了什麼。</dd></div>
+          <div><dt>觸發</dt><dd>哪個機制接手。</dd></div>
+          <div><dt>依序</dt><dd><ol><li>第一件事</li><li>第二件事</li></ol></dd></div>
+          <div><dt>結果</dt><dd class="result">最後的狀態。</dd></div>
+        </dl>
+        <div class="evidence"><b>實際發生過</b>（可省略）真實案例、錯誤訊息、PR 編號。</div>
+        <div class="diagram"><div class="diagram-label">時序圖</div>
+<div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant A as 參與者 A
+    participant B as 參與者 B
+    A->>B: 第一步（步驟索引 0）
+    B-->>A: 第二步（步驟索引 1）
+    alt 條件成立
+        B->>B: 第三步（2）
+    else 不成立
+        Note over A,B: 第四步（3）
+    end
+</script></div></div>
+      </article>
+
+    </div>
+
+    <section class="issues" id="issues">
+      <h2>已知問題與未來優化點</h2>
+      <ul><li>…</li></ul>
+    </section>
+
+    <section class="files" id="files">
+      <h2>這份文件對應的檔案</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>檔案</th><th>角色</th></tr></thead>
+          <tbody><tr><td><code>path/to/file</code></td><td>做什麼</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="seqviz.js"></script>
+<script>
+  (function () {
+    SeqViz.mountAll(".seq");
+
+    // 右側對照程式碼：跟著時序圖的步驟點亮（aside 由 build-snippets.mjs 注入）
+    document.querySelectorAll('.viz-row').forEach(function (row) {
+      var seq = row.querySelector('.seq'), panel = row.querySelector('.code-panel');
+      if (!seq || !panel) return;
+      var snips = Array.prototype.slice.call(panel.querySelectorAll('.snip'));
+      snips.forEach(function (s) { s.steps = s.dataset.steps.split(' ').map(Number); });
+      seq.addEventListener('seqstep', function (e) {
+        var k = e.detail.step, first = null;
+        snips.forEach(function (s) {
+          var hit = k >= 0 && s.steps.indexOf(k) !== -1;
+          s.classList.toggle('cur', hit);
+          s.classList.toggle('dim', k >= 0 && !hit);
+          if (hit && !first) first = s;
+        });
+        if (first) {
+          var top = first.offsetTop - panel.offsetTop - 8;
+          if (top < panel.scrollTop || top + first.offsetHeight > panel.scrollTop + panel.clientHeight) {
+            panel.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+          }
+        }
+      });
+      snips.forEach(function (s) {
+        var jump = function () { if (seq.seqviz) { seq.seqviz.stop(); seq.seqviz.set(s.steps[0]); } };
+        s.addEventListener('click', jump);
+        s.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); } });
+      });
+    });
+
+    // 階段篩選（總覽表、目錄、案例一起過濾；選擇記在 localStorage）
+    var chips = document.querySelectorAll('.chip');
+    var cases = document.querySelectorAll('.case');
+    var rows = document.querySelectorAll('#overview-body tr');
+    var navItems = document.querySelectorAll('#nav-list li');
+    var empty = document.getElementById('empty');
+    var KEY = 'artifact-filter:' + document.title;
+    function applyFilter(stage) {
+      var shown = 0;
+      cases.forEach(function (el) { var hide = stage !== 'all' && el.dataset.stage !== stage; el.hidden = hide; if (!hide) shown++; });
+      rows.forEach(function (el) { el.hidden = stage !== 'all' && el.dataset.stage !== stage; });
+      navItems.forEach(function (el) { el.hidden = stage !== 'all' && el.dataset.stage !== stage; });
+      chips.forEach(function (c) { c.setAttribute('aria-pressed', String(c.dataset.filter === stage)); });
+      empty.classList.toggle('show', shown === 0);
+      try { localStorage.setItem(KEY, stage); } catch (e) {}
+    }
+    chips.forEach(function (c) { c.addEventListener('click', function () { applyFilter(c.dataset.filter); }); });
+    var saved = 'all';
+    try { saved = localStorage.getItem(KEY) || 'all'; } catch (e) {}
+    if (saved !== 'all') applyFilter(saved);
+
+    // 捲動時標記目錄目前位置
+    var links = document.querySelectorAll('#nav-list a');
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + entry.target.id); });
+        });
+      }, { rootMargin: '-30% 0px -60% 0px' });
+      cases.forEach(function (el) { io.observe(el); });
+    }
+  })();
+</script>
