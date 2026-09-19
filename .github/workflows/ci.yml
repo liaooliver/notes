@@ -1,10 +1,13 @@
 name: Enterprise CI/CD Pipeline
 
 on:
-  # staging 的 PR 已經跑過 build + white-box，merge 後不再重跑；
-  # main 的 push 仍需要重跑，因為 encryption 要用同一個 run 的 build 產物。
+  # push 監聽 staging 是 GitOps 的必要條件：image 必須從「合併後」的程式碼
+  # build 出來，所以 staging 一定要有 push 事件。這等於把 PR #14
+  # (ci: skip pipeline re-run on push to staging) 的決定改回來——
+  # 代價是 staging 的 PR 已經跑過的 build + white-box 會在 merge 後重跑一次（約 1 分鐘），
+  # 換到的是 staging 環境真的會換版。這是刻意的，不是手滑改回來的。
   push:
-    branches: [ "main" ]
+    branches: [ "main", "staging" ]
   pull_request:
     branches: [ "main", "staging" ]
 
@@ -66,6 +69,72 @@ jobs:
           format: 'table'
           severity: 'CRITICAL,HIGH'
           exit-code: '1' # 抓到高風險 CVE 立即熔斷 Pipeline
+
+  # 3. Docker 階段：把通過測試 + 掃描的 dist/ 打包成 multi-arch image 推到 GHCR
+  docker:
+    name: Build & Push Image
+    needs: white-box
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.sha.outputs.tag }}
+      image_digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      # 自己算 tag，不要拿 metadata-action 的 version 輸出：
+      # 那個輸出會依 tag 優先序回傳 "staging" / "main"，manifest 需要的是唯一的 sha tag。
+      - name: Compute Image Tag
+        id: sha
+        run: echo "tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      # 用 build job 的產物，不重新 build——確保「進 image 的東西」=「通過測試的東西」
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dist-files
+          path: dist
+
+      # QEMU：讓 amd64 的 runner 能產出 arm64 的 layer。
+      # 沒有這兩步，build 出來只有 amd64，Apple Silicon 上的 k3s 拉不動。
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      # buildx：預設的 docker builder 一次只能出一種架構，多架構一定要 buildx
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker Metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=ref,event=branch
+
+      - name: Build and Push
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64   # ← 關鍵的一行
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # 3. Encryption 階段 (等效產物加密保護)
   encryption:
