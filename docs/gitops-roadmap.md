@@ -434,7 +434,7 @@ on:
       image_digest: ${{ steps.push.outputs.digest }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # 自己算 tag，不要拿 metadata-action 的 version 輸出：
       # 那個輸出會依 tag 優先序回傳 "staging" / "main"，manifest 需要的是唯一的 sha tag。
@@ -444,7 +444,7 @@ on:
         run: echo "tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Download Build Artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: dist-files
           path: dist
@@ -757,7 +757,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: staging
           fetch-depth: 0
@@ -806,7 +806,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -884,7 +884,7 @@ remote: - 3 of 3 required status checks are expected.       ← 規則 B
 | | classic protection | ruleset + bypass |
 | --- | --- | --- |
 | `GITHUB_TOKEN`（`github-actions[bot]`） | 規則 B 無解，判斷會失敗 | 待測：個人 repo 的 bypass list 能不能選到 bot |
-| GitHub App token（`actions/create-github-app-token@v2`） | 規則 B 無解，也會失敗 | 可行；代價是「bot push 不觸發 workflow」那層保險消失 |
+| GitHub App token（`actions/create-github-app-token@v3`） | 規則 B 無解，也會失敗 | 可行；代價是「bot push 不觸發 workflow」那層保險消失 |
 | Fine-grained PAT | 同上，失敗 | **不採用**：綁個人帳號、會過期、權限是帳號層級 |
 
 **這是「要不要把 `main` / `staging` 從 classic 遷到 ruleset」的決定，不是「用哪把 token」的決定。**
@@ -913,7 +913,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with: { ref: staging, fetch-depth: 0 }
       - run: |
           git config user.name  "github-actions[bot]"
@@ -947,7 +947,7 @@ jobs:
 | --- | --- |
 | 維持 classic | **不可能讓 bot push 成功**（規則 B 無解）→ 改走第 2.2 節的不受保護 `deploy` 分支方案，或回頭遷 ruleset |
 | 遷 ruleset，且 bot 可選為 bypass actor | 維持 `GITHUB_TOKEN`，本節範例一字不改；`[skip ci]` +「bot push 不觸發 workflow」兩層保險都在 |
-| 遷 ruleset，但只能選 GitHub App | 改用 `actions/create-github-app-token@v2`，`actions/checkout` 要帶 `token:`；**「不觸發 workflow」那層保險消失，`[skip ci]` 成為唯一防線**；`paths-ignore` 仍然不准加，理由見下 |
+| 遷 ruleset，但只能選 GitHub App | 改用 `actions/create-github-app-token@v3`，`actions/checkout` 要帶 `token:`；**「不觸發 workflow」那層保險消失，`[skip ci]` 成為唯一防線**；`paths-ignore` 仍然不准加，理由見下 |
 
 後兩列維持定案不動——它們的理由跟用哪把 token、哪套機制都無關。
 
@@ -962,7 +962,7 @@ jobs:
     name: Validate Deploy Manifests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: kustomize build
         run: |
           for overlay in deploy/overlays/*/; do

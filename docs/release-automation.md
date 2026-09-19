@@ -156,9 +156,25 @@ run #39 完整跑完 build → white-box → encryption → ops-handoff（人工
   actions/download-artifact@v4
   ```
 
-  目前只是警告、不影響結果（GitHub 已自動改用 Node 24 跑），但之後 v4 會停止支援。要把這四個 action 升到 v5。
-  跟 `node-version: 22` 是兩件不同的事：那個是「workflow 裡跑我們自己的 `npm` 指令用哪個 Node」，
-  這個是「action 本身的 JS 用哪個 Node runtime 執行」。`gitops-roadmap.md` Phase 2 的範例已經直接用 v5 寫，
-  所以那些新加的 step 不會再踩一次；要處理的是 `ci.yml` 裡既有的四個 v4。
+  當時只是警告、不影響結果（GitHub 已自動改用 Node 24 跑）。跟 `node-version: 22` 是兩件不同的事：
+  那個是「workflow 裡跑我們自己的 `npm` 指令用哪個 Node」，這個是「action 本身的 JS 用哪個 Node runtime 執行」。
+
+  **2026-09-19 已處理，但沒有照原本寫的升 v5。** 當時的結論是「升到 v5」，實際動手時發現 v5 已經落後兩到三個 major，
+  而且 `upload-artifact@v5` 對 Node 24 只是初步支援、要到 v6 才真的預設跑 Node 24 —— 升 v5 等於留一個半成品。
+  最後三個 workflow 檔案一起升到當時的最新版：
+
+  | action | 之前 | 之後 | 用到幾處 |
+  | --- | --- | --- | --- |
+  | `actions/checkout` | v4 | **v7** | 7 |
+  | `actions/setup-node` | v4 | **v7** | 5 |
+  | `actions/upload-artifact` | v4 | **v7** | 2 |
+  | `actions/download-artifact` | v4 | **v8** | 2 |
+
+  `upload-artifact@v7` 與 `download-artifact@v8` 是配對的一組（同一天發布，v8 就是為了支援 v7 的直傳而改的），
+  升級時兩個要一起動，不能只升其中一個。
+
+  **教訓：文件裡寫死的版本號，動手前要先查一次上游現況。** 上面那句「升到 v5」是 2026-09-18 寫的，
+  隔天執行時才發現 v5 早在 2025-08 就發布、當時已經被 v6/v7/v8 蓋過去——寫的當下就已經過期了，
+  只是沒人去查。`gh api repos/actions/checkout/releases/latest` 一行就能問到，比憑印象寫版本號可靠。
 - **`ubuntu-latest` 會在 2026-10-19 起遷移到 Ubuntu 26。** run #39 的 notice 提到。目前 workflow 沒有綁特定 OS 版本的東西，
   但 `white-box` job 直接 `docker run` semgrep、Phase 1 之後還會加 docker build，遷移當下值得重跑一次確認。
