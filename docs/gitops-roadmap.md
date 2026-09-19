@@ -611,6 +611,14 @@ rm -f /tmp/notes-deploy-key /tmp/notes-deploy-key.pub
 
 > `--allow-write` 一定要加。少了它 CI 能 clone 但 push 會被拒，而錯誤訊息只說 `access denied`，不會告訴你是少勾了一個選項。
 
+> **這一步已經實際做完並驗證過（2026-09-19）。** `liaooliver/notes-deploy` 已建立（public、無任何 branch protection），
+> deploy key 已掛上（`read_only=false`），`DEPLOY_REPO_SSH_KEY` 已存進 `notes` 的 Actions secrets。
+> 並用一條拋棄式分支上的 workflow 實測過端到端：`github-actions[bot]` 成功把一筆 empty commit 推進 `notes-deploy` 的 `main`，
+> **而 `notes` 沒有因此多出任何 workflow run** —— 拆 repo 解決循環觸發這件事拿到了實證，不是推論。測完分支已刪除。
+>
+> 同一次實測還確認了一件事：**deploy key 推的 commit 會觸發 `notes-deploy` 自己的 workflow**（`Manifest Check` 跑了且是綠的）。
+> 這跟 `GITHUB_TOKEN` 不一樣——後者產生的 push 不會觸發任何 workflow。所以 Phase 4 的每一次 bump 都會自動被驗一次。
+
 ##### 3-c. 檔案樹
 
 ```
@@ -1003,7 +1011,8 @@ Settings 兩頁看過，並用 `gh api repos/liaooliver/notes/branches/<branch>/
 
 **處置：繞開，不突破。** 既然 classic 底下無解，而遷 ruleset 還壓著一顆「個人 repo 的 bypass 名單能不能選到 bot」的未爆彈，第 2.2 節改為獨立 `notes-deploy` repo——CI 不再需要 push 進任何受保護的分支，這個問題整個消失。`main` 與 `staging` 的保護設定**一個字都不用動**。
 
-> **那個 `push-smoke-test.yml` 不必做了。** 它存在的目的是確認 bot 能不能 push 進受保護分支；現在不需要那個能力，測了也沒有意義。真正該測的換成「CI 能不能用 deploy key 寫進 `notes-deploy`」，而那件事 Phase 4 第一次跑就會驗到，不用另外設計實驗。
+> **那個 `push-smoke-test.yml` 不必做了。** 它存在的目的是確認 bot 能不能 push 進受保護分支；現在不需要那個能力，測了也沒有意義。
+> 真正該測的是「CI 能不能用 deploy key 寫進 `notes-deploy`」——**那件事已經在 2026-09-19 實測通過了**，做法與結果見 Phase 3-b。
 
 ##### 這三件事現在都不用決定了
 

@@ -365,9 +365,41 @@ classic 無解之後有三條路：轉 ruleset、走不受保護的 `deploy` 分
 
 **唯一紅線：`notes-deploy` 裡永遠不能出現 k8s 的 `Secret` 資源。** `Secret` 的 `data` 只是 base64，不是加密。目前規劃剛好踩不到（repo public → GHCR package public → 拉 image 不需憑證），`imagePullSecrets` 維持註解狀態。將來真要用得先過 Sealed Secrets 或 SOPS。
 
-### 7.5 `push-smoke-test.yml` 正式取消
+### 7.5 `push-smoke-test.yml` 取消，改測真正要緊的那一格
 
-它的目的是驗證「bot 能不能 push 進受保護分支」。現在不需要那個能力了，測了沒有意義。改成由 Phase 4 第一次跑時驗證 deploy key 是否可用——那是真正要確認的事，而且不必另外設計實驗。
+原本的 smoke test 是要驗證「bot 能不能 push 進受保護分支」。現在不需要那個能力了，測了沒有意義。
+
+換成測「CI 能不能用 deploy key 寫進 `notes-deploy`」，**而且當天就測了**（用同一招：workflow 放在拋棄式分支 `chore/deploy-key-smoke-test` 上，`push` 觸發，測完刪分支）。
+
+結果三項全中：
+
+| 驗證項目 | 結果 |
+| --- | --- |
+| `github-actions[bot]` 用 deploy key push 進 `notes-deploy` 的 `main` | 成功（commit `fcf76a8`） |
+| `notes` 有沒有因此多出 workflow run | **沒有** —— 拆 repo 解決循環觸發拿到實證，不是推論 |
+| deploy key 推的 commit 會不會觸發 `notes-deploy` 自己的 workflow | **會**，`Manifest Check` 跑了且綠燈 |
+
+第三項跟 `GITHUB_TOKEN` 的行為相反（後者產生的 push 不觸發任何 workflow），所以 Phase 4 的每一次 bump 都會自動被驗一次 kustomize。
+
+那筆 empty commit 保留不 revert，它本身就是紀錄。
+
+### 7.5-a 實作內容（已完成）
+
+`liaooliver/notes-deploy` 已建立並推上內容：
+
+```
+base/{web-deployment,web-service,ingress,kustomization}.yaml
+overlays/{staging,production}/kustomization.yaml
+argocd/{notes-staging,notes-production}.yaml
+.github/workflows/manifest-check.yml
+README.md
+```
+
+- public、**刻意不設任何 branch protection**（`gh api .../branches/main/protection` 回 404 Branch not protected）
+- deploy key「notes CI」已掛上，`read_only=false`
+- `notes` 的 Actions secret `DEPLOY_REPO_SSH_KEY` 已設定
+- 本機 `kubectl kustomize` 兩個 overlay 都算得出來，namespace / image / host 三項逐一核對過
+- `Manifest Check` 在 GitHub 上跑過兩次都是綠的
 
 ### 7.6 順帶處理：`actions/*` 升級（PR #21）
 
