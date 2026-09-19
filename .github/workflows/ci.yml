@@ -19,10 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: 'npm'
@@ -37,7 +37,7 @@ jobs:
         run: npm run build
 
       - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-files
           path: dist/
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 2-1. SAST 靜態程式碼掃描 (等效 Checkmarx)
       - name: Run Semgrep SAST
@@ -75,7 +75,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Download Build Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-files
           path: dist
@@ -89,7 +89,7 @@ jobs:
             -k "${{ secrets.DEPLOY_ENCRYPTION_KEY }}"
 
       - name: Upload Encrypted Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: encrypted-dist
           path: dist.tar.gz.enc
@@ -104,7 +104,7 @@ jobs:
     environment: production # 綁定 Production 環境，觸發手動審核等待
     steps:
       - name: Download Encrypted Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: encrypted-dist
 
@@ -122,12 +122,12 @@ jobs:
       contents: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: 'npm'
