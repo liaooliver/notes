@@ -1,0 +1,9 @@
+# 目前的 Dockerfile 只 COPY dist/，BuildKit 會自動只傳那個路徑，
+# 所以這個檔現在不影響任何事。它是為 Phase 8 準備的——那時 multi-stage
+# build 會改成 COPY . .，整個 repo 都會進 build context。
+node_modules
+.git
+.github
+test
+docs
+*.md
