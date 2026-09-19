@@ -295,3 +295,119 @@ ruleset 的 bypass list 才是整組豁免（A 和 B 都解）。所以決定是
 ### 6.5 修改後的規模
 
 `docs/gitops-roadmap.md`：1597 → 1716 行。
+
+---
+
+## 七、4-a 執行結果與 manifest 位置改判（2026-09-19）
+
+### 7.1 4-a 盤點：已執行，結論是 classic
+
+第六輪留下的唯一待辦是「到 Settings 看一眼 `main` / `staging` 是 classic 還是 ruleset」。已執行，而且不只看截圖，另外用 `gh api repos/liaooliver/notes/branches/<branch>/protection` 讀出實際值。
+
+`main` 與 `staging` 設定完全相同：
+
+| 項目 | 實際值 |
+| --- | --- |
+| 機制 | **classic branch protection**（Rulesets 頁面是空的） |
+| 規則 A：必須透過 PR | 開啟，`required_approving_review_count: 0`，bypass 名單空 |
+| 規則 B：required status checks | 開啟，3 個 context |
+| Include administrators | 關閉 |
+| Restrict who can push | 未啟用 |
+| Force push | 禁止 |
+
+跟 run #32 的 `GH006` 兩行錯誤逐行對上。**第三輪從錯誤碼推出來的結論成立，矩陣落在左欄，左欄三格全部失敗。**
+
+盤點時多查到兩件文件裡沒有的事：
+
+1. **`required_approving_review_count: 0`** —— 規則 A 只要求「走 PR」，不要求有人 approve。這讓「bot 自己開 PR + auto-merge」看起來像第四條路，但它是死路：repo 的 `allow_auto_merge` 是 `false`，更致命的是 `GITHUB_TOKEN` 開的 PR 不觸發 workflow，三個 check 永遠 Pending，auto-merge 永遠不啟動。要解就得用 App token，於是繼承建 App 的全部成本還多一層 PR 生命週期——比直接走 bypass 更差，已排除。
+2. **`default_workflow_permissions: read`** —— 任何要寫入的 job 都得自己宣告 `permissions:`。
+
+### 7.2 決定從「繞過」升級成「換架構」：manifest 移到獨立 repo
+
+classic 無解之後有三條路：轉 ruleset、走不受保護的 `deploy` 分支、manifest 另開 repo。
+
+一開始建議的是 `deploy` 分支（成本最低、不動 `main`）。**使用者反問「依照業界最佳實務，把記錄進版的檔案放到 `deploy` 會不會很奇怪？」——這個問題問對了，而且推翻了那個建議。**
+
+誠實的排序是：
+
+| 做法 | 常見度 |
+| --- | --- |
+| 另一個 repo | **標準答案**（Argo CD 官方 Best Practices 就是這樣建議） |
+| 同 repo、同分支、`deploy/` 目錄 | 很常見 |
+| 同 repo、`deploy` 分支 | 最少見，Argo CD 文件還特別提醒過用分支分環境容易出問題 |
+
+我先前把 `deploy` 分支說成「正規 GitOps 寫法」是講過頭了，已在文件與對話中更正。**定案改為獨立 repo `liaooliver/notes-deploy`。**
+
+### 7.3 這個改動一次解掉三個難題
+
+拆出獨立 repo 之後，Phase 4 原本互相牽動的三個未定案有兩個直接作廢：
+
+| 原本的難題 | 為什麼消失 |
+| --- | --- |
+| branch protection 擋住 bot push | 寫入目標是 `notes-deploy`，不設保護。`main` / `staging` 的設定一個字都不用改 |
+| 循環觸發 → 需要 `[skip ci]` | 改的是另一個 repo，`notes` 的 workflow 不會被觸發。`[skip ci]` 從設計中移除 |
+| `paths-ignore` 的 merge 死結 | `notes` 裡不再有 `deploy/**`，兩難一起作廢 |
+
+附帶好處：rollback 不必再開 PR 走 branch protection，直接在 `notes-deploy` 上 `git revert` + push。出事的時候這點差很多。
+
+**代價只有一項**：跨 repo 寫入需要憑證。用 deploy key（`ssh-keygen` + `gh repo deploy-key add --allow-write` + `gh secret set DEPLOY_REPO_SSH_KEY`），設定一次。deploy key 綁死單一 repo，比 PAT（預設橫跨帳號下所有 repo）小得多。
+
+### 7.4 public repo 的資安界線
+
+兩個 repo 都是 public，逐條確認過：
+
+| 疑慮 | 結論 |
+| --- | --- |
+| 私鑰會不會外洩 | 不會。存在 Actions Secrets，不在程式碼裡 |
+| fork 來的 PR 能不能偷到 | 不能。GitHub 不把 secrets 傳給 fork PR。例外是 `pull_request_target`，三個 workflow 都沒用（升級 actions 時一併查證過） |
+| 金鑰外洩的影響範圍 | 只有 `notes-deploy` 一個 repo |
+| manifest 本身有沒有敏感資訊 | 沒有。image 名稱、副本數、資源上限、`.local` 網址而已 |
+
+**唯一紅線：`notes-deploy` 裡永遠不能出現 k8s 的 `Secret` 資源。** `Secret` 的 `data` 只是 base64，不是加密。目前規劃剛好踩不到（repo public → GHCR package public → 拉 image 不需憑證），`imagePullSecrets` 維持註解狀態。將來真要用得先過 Sealed Secrets 或 SOPS。
+
+### 7.5 `push-smoke-test.yml` 取消，改測真正要緊的那一格
+
+原本的 smoke test 是要驗證「bot 能不能 push 進受保護分支」。現在不需要那個能力了，測了沒有意義。
+
+換成測「CI 能不能用 deploy key 寫進 `notes-deploy`」，**而且當天就測了**（用同一招：workflow 放在拋棄式分支 `chore/deploy-key-smoke-test` 上，`push` 觸發，測完刪分支）。
+
+結果三項全中：
+
+| 驗證項目 | 結果 |
+| --- | --- |
+| `github-actions[bot]` 用 deploy key push 進 `notes-deploy` 的 `main` | 成功（commit `fcf76a8`） |
+| `notes` 有沒有因此多出 workflow run | **沒有** —— 拆 repo 解決循環觸發拿到實證，不是推論 |
+| deploy key 推的 commit 會不會觸發 `notes-deploy` 自己的 workflow | **會**，`Manifest Check` 跑了且綠燈 |
+
+第三項跟 `GITHUB_TOKEN` 的行為相反（後者產生的 push 不觸發任何 workflow），所以 Phase 4 的每一次 bump 都會自動被驗一次 kustomize。
+
+那筆 empty commit 保留不 revert，它本身就是紀錄。
+
+### 7.5-a 實作內容（已完成）
+
+`liaooliver/notes-deploy` 已建立並推上內容：
+
+```
+base/{web-deployment,web-service,ingress,kustomization}.yaml
+overlays/{staging,production}/kustomization.yaml
+argocd/{notes-staging,notes-production}.yaml
+.github/workflows/manifest-check.yml
+README.md
+```
+
+- public、**刻意不設任何 branch protection**（`gh api .../branches/main/protection` 回 404 Branch not protected）
+- deploy key「notes CI」已掛上，`read_only=false`
+- `notes` 的 Actions secret `DEPLOY_REPO_SSH_KEY` 已設定
+- 本機 `kubectl kustomize` 兩個 overlay 都算得出來，namespace / image / host 三項逐一核對過
+- `Manifest Check` 在 GitHub 上跑過兩次都是綠的
+
+### 7.6 順帶處理：`actions/*` 升級（PR #21）
+
+原訂「升 v5」。實際動手前用 `gh api repos/actions/<name>/releases/latest` 查了一次，**發現 v5 在寫下那句話的當天就已經過期**（v5 是 2025-08 發布，當時最新已是 v7 / v8）。改為升到當時的 major：`checkout@v7`、`setup-node@v7`、`upload-artifact@v7`、`download-artifact@v8`，三個 workflow 檔案共 16 處。
+
+跨了三到四個 major，五條 breaking change 逐條對照過這個 repo，沒有一條打到。`release-automation.md` 補上教訓：**文件裡寫死的版本號是寫下當天的快照，不是常數。**
+
+### 7.7 本輪未做
+
+- 沒有動 `main` / `staging` 的任何保護設定——這正是這個方案的重點。
+- 沒有轉 ruleset，也沒有建 GitHub App。
