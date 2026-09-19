@@ -1792,6 +1792,6 @@ git push
 | 文件 | 內容 | 跟本文的關係 |
 | --- | --- | --- |
 | [`branching-strategy.md`](./branching-strategy.md) | `feature/* → staging → main` 的分支模型與兩層 gate | 本文完全沿用這個分支模型，只是把 gate 後面接的動作從「加密上傳」換成「bump manifest → Argo CD 部署」。第 4 節的表格是那份文件表格的延伸版。 |
-| [`release-automation.md`](./release-automation.md) | commitlint + semantic-release 的演變過程與坑 | 本文 Phase 4 會踩到它預告的「`GITHUB_TOKEN` push 被 branch protection 擋」；Phase 10 讓 semantic-release 的版本 tag 也打到 image 上。 |
+| [`release-automation.md`](./release-automation.md) | commitlint + semantic-release 的演變過程與坑 | 本文 Phase 4 原本會踩到它預告的「`GITHUB_TOKEN` push 被 branch protection 擋」，4-a 盤點後改成把 manifest 移到 `notes-deploy` 繞開（第 2.2 節）；Phase 10 讓 semantic-release 的版本 tag 也打到 image 上。 |
 | [`use-cases.md`](./use-cases.md) | **現況**所有觸發情境的逐條說明與時序圖（開 PR、merge 進 staging、promotion 到 main、approve、LLM assist……） | 本文第 2.3 節的時序圖是那份文件「情境：staging → main promotion」在新架構下的未來版。實作完 Phase 4 之後，那份文件的 `ops-handoff` 段落要同步更新。 |
 | [`llm-pr-assist.md`](./llm-pr-assist.md) | Gemini PR 助手 | 不受本文影響；`llm-pr-assist.yml` 跟 `ci.yml` 互相獨立。bump commit 現在落在 `notes-deploy`，那個 repo 沒有裝這個 workflow，所以不會消耗 Gemini 額度。 |
