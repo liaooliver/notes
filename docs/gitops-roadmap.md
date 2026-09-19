@@ -3,6 +3,7 @@
 > **狀態：設計稿，Phase 0 已完成。** 本文描述如何把目前 `ci.yml` 的 5 個 job 延伸成下面這條完整的 GitOps 鏈路。
 > 所有 YAML / shell 片段都是為了讓每個 Phase 可以直接開 PR 而寫的草案，實際落地時請依當時的 action 版本與環境調整。
 > 執行環境已確定為 **Apple Silicon（M4 / 16GB）+ Multipass VM + k3s**，第 0 節說明這個決定帶來的限制。
+> **manifest 放在另一個 repo `liaooliver/notes-deploy`**（2026-09-19 定案，理由與推導見第 2.2 節）。
 > 互動版：[GitOps Roadmap Artifact](https://claude.ai/artifact/9EbPRiqXcJY8ZrqcJXputd)（可逐步播放的架構流程圖）
 
 ```
@@ -12,7 +13,7 @@ git commit / git push
   → Docker build
   → push image 到 GHCR
   → GitHub Environment Approval
-  → 更新 k8s manifest image tag
+  → 更新 notes-deploy 裡的 k8s manifest image tag
   → Argo CD 偵測 Git 變更
   → sync 到 k3s
   → staging / production 流程
@@ -126,7 +127,7 @@ k3s 之後要加節點只要在另一台 VM 跑一行 `K3S_URL=... K3S_TOKEN=...
 
 第一輪刻意用現在那個 863 bytes 的靜態頁。它沒有 build 步驟、沒有相依套件、沒有路由，**所以第一輪任何一次失敗都不可能是應用程式的錯**，除錯範圍小很多。
 
-第二輪換內容物時，`deploy/` 底下的 manifest 幾乎一行都不用改 —— k8s 只認 image tag，不管盒子裡裝的是靜態 HTML、Vue 還是 Java。
+第二輪換內容物時，`notes-deploy` 裡的 manifest 幾乎一行都不用改 —— k8s 只認 image tag，不管盒子裡裝的是靜態 HTML、Vue 還是 Java。
 
 ### 0.5 刻意不做的事
 
@@ -146,12 +147,12 @@ k3s 之後要加節點只要在另一台 VM 跑一行 `K3S_URL=... K3S_TOKEN=...
 | `build` | `npm ci` → `npm test` → `npm run build` → 上傳 `dist/` artifact | **test / build** | **沿用**。`build` script 原本是 placeholder（只 echo 一個 `<h1>`），Phase 0 已修成複製 `src/`。第二輪改成 Vue 之後這個 job **一行都不用改**，因為 `npm run build` 這個介面沒變（見 Phase 7）。 |
 | `white-box` | Semgrep SAST + Trivy `fs` 掃描 | **CI 安全閘** | **沿用**。之後可加一個 Trivy `image` 掃描步驟，對剛 build 好的 image 再掃一次（Phase 10）。 |
 | `encryption` | `tar` + `openssl aes-256-cbc` 加密 `dist/`，上傳 `dist.tar.gz.enc` | 無直接對應 | **重新定位或拿掉**。在 image 世界裡，「保護交付產物」的做法是 registry 權限控管 + image 簽章（cosign），不是把 tarball 加密。建議：Phase 2 加了 `docker` job 之後把 `encryption` 移除；想保留「產物完整性」這個學習點就改成 cosign keyless 簽章（Phase 10）。 |
-| `ops-handoff` | `environment: production` 等人工核准 → `echo` 一句話 | **GitHub Environment Approval → 更新 manifest image tag** | **沿用審核機制、替換執行內容**。把 `echo` 換成 `kustomize edit set image` + commit 回 repo（Phase 4）。這就是「人按下 Approve」到「Argo CD 開始部署」之間唯一的橋。 |
+| `ops-handoff` | `environment: production` 等人工核准 → `echo` 一句話 | **GitHub Environment Approval → 更新 manifest image tag** | **沿用審核機制、替換執行內容**。把 `echo` 換成 `kustomize edit set image` + commit 進 `notes-deploy`（Phase 4）。這就是「人按下 Approve」到「Argo CD 開始部署」之間唯一的橋。 |
 | `release` | `semantic-release` 算版號、打 tag、發 GitHub Release | 版本號 / Release notes | **沿用**。順序調整為在 manifest bump 之後跑，讓 image 也能順便打上 `notes-vX.Y.Z` tag（Phase 10）。 |
 | （無） | — | **Dockerfile / docker build / push GHCR** | **新增**（Phase 1、2） |
-| （無） | — | **k8s manifest（kustomize base + overlays）** | **新增**（Phase 3） |
+| （無） | — | **k8s manifest（kustomize base + overlays）** | **新增**，但放在另一個 repo `liaooliver/notes-deploy`（Phase 3、第 2.2 節） |
 | （無） | — | **Argo CD + k3s** | **新增**（Phase 5、6） |
-| （無） | — | **`manifest-check`（`kustomize build` 驗證，永遠會跑）** | **新增**（Phase 4） |
+| （無） | — | **`manifest-check`（`kustomize build` 驗證）** | **新增**，放在 `notes-deploy` 自己的 workflow（Phase 4） |
 | （無） | — | **Vue 3 SPA + Express API（第二輪）** | **新增**（Phase 7、8、9） |
 
 一句話總結：**CI 這一半（test / build / scan / approval）幾乎原封不動，CD 這一半從「加密 tarball 交給不存在的運維」變成「改 Git 裡的 manifest，讓 Argo CD 去部署」。**
@@ -181,11 +182,11 @@ flowchart LR
     D -->|push main| ENV{GitHub Environment<br/>production<br/>人工 Approve}
     ENV -->|approved| BP[bump-production]
 
-    BS -->|commit deploy/overlays/staging| GH
-    BP -->|commit deploy/overlays/production| GH
+    BS -->|"commit overlays/staging<br/>(deploy key)"| CFG[("GitHub<br/>liaooliver/notes-deploy")]
+    BP -->|"commit overlays/production<br/>(deploy key)"| CFG
     BP --> REL[release<br/>semantic-release]
 
-    GH -.->|polling 3 min| ARGO[Argo CD]
+    CFG -.->|polling 3 min| ARGO[Argo CD]
 
     subgraph VM["Multipass VM（Ubuntu / arm64）"]
         ARGO
@@ -205,13 +206,14 @@ flowchart LR
     Browser["Mac 的瀏覽器<br/>notes-staging.local"] -->|"/etc/hosts → VM IP:80"| TR
 ```
 
-三個容易混淆的邊界：
+四個容易混淆的邊界：
 
+- **有兩個 repo。** `liaooliver/notes` 裝程式碼，`liaooliver/notes-deploy` 裝部署設定。CI 在前者跑，寫的卻是後者；Argo CD 只看後者，完全不知道前者的存在（第 2.2 節）。
 - **GitHub Actions 跑在 amd64、VM 是 arm64** —— 所以 `docker` job 一定要出 multi-arch（第 0.1 節）。
 - **Argo CD 跟 k3s 都在 VM 裡**，但 `kubectl` 跟瀏覽器在 Mac 上，中間隔著 VM 的 IP（Phase 5.3、Phase 6）。
 - **Argo CD 只讀 Git，不讀 GHCR** —— 它看到的是 manifest 裡的 image tag 字串變了，才叫 k3s 去 pull。所以「image 推上去了」跟「叢集換版了」是兩件事，中間靠 Phase 4 的 bump commit 連起來。
 
-### 2.2 manifest 要放哪裡：同 repo `deploy/` vs 獨立 `notes-deploy` repo
+### 2.2 manifest 要放哪裡：定案為獨立 `notes-deploy` repo
 
 | | 同 repo、`deploy/` 在受保護分支上 | 同 repo、但 Argo CD 讀不受保護的 `deploy` 分支 | 獨立 repo（`liaooliver/notes-deploy`） |
 | --- | --- | --- | --- |
@@ -224,14 +226,41 @@ flowchart LR
 | 代價 | 需要能 push 進受保護分支的身分 | 多一條要記得存在的分支；`deploy` 分支不會自動跟上 `main` 的程式碼，兩邊的 `git log` 對不起來；rollback 要在那條分支上操作 | 多一個 repo、跨 repo 憑證 |
 | 業界慣例 | 小專案 / 單人 / 學習用 | 少見，但完全合法（Argo CD 的 `targetRevision` 本來就支援） | 多團隊、多服務、正式環境 |
 
-**建議：先用同 repo `deploy/` 目錄。** 理由：
+**定案：第三欄，獨立 repo `liaooliver/notes-deploy`。**
 
-1. 這個專案是單人學習用，多一個 repo 只會增加「secret 跨 repo」這種跟 GitOps 本質無關的摩擦。
-2. 循環觸發的問題有標準解法（見第 5 節），而且**親自踩一次這個坑正是學習的一部分**。
-3. 之後要拆出去很容易：`git subtree split -P deploy` 就能把 `deploy/` 目錄連歷史一起搬到新 repo，Argo CD 只要改 `repoURL`。
+> 這一節在 2026-09-19 改過。原本定的是第一欄（同 repo `deploy/` 目錄），理由是「單人學習用，少管一個 repo」。
+> 那個判斷**在做出來的當下就缺了一項輸入**：當時的比較表裡沒有 branch protection 這一列。補上之後，第一欄直接出局。
 
-> **但這個建議有一個前提還沒驗證。** 第一欄的「會撞 branch protection」那格不是小麻煩——在 classic branch protection 底下它可能**根本無解**（詳見 Phase 4 的 4-a）。
-> 如果 4-a 的結論是「必須把 `main` / `staging` 遷成 ruleset，或另外建一個 GitHub App」，**請回來重讀這一節**：改一條不受保護的 `deploy` 分支，成本很可能比動整個 repo 的保護機制低，而且不會削弱 `main` 的保護強度。
+**為什麼第一欄出局：它不是比較難，是做不到。** Phase 4 的 4-a 盤點已經執行完畢，結論是 `main` 與 `staging` 都跑在 classic branch protection 上，而 classic 的 required status check **沒有任何針對特定身分的豁免開關**。第一欄的前提是「CI 能 push 進受保護分支」，在現況下無解——換 token、換 App 都一樣（完整推導見 Phase 4）。
+
+剩下第二欄與第三欄，差別只有兩件事：
+
+| | 第二欄：`deploy` 分支 | 第三欄：獨立 repo |
+| --- | --- | --- |
+| 要設跨 repo 憑證嗎 | 不用 | **要**，一把 deploy key，設定一次 |
+| 要管幾個 repo | 1 | 2 |
+| 業界慣例 | 少見 | **Argo CD 官方 Best Practices 建議的做法** |
+
+**選第三欄。** 三個理由：
+
+1. **它是標準答案。** Argo CD 官方文件明確建議把「程式碼 repo」與「部署設定 repo」分開；而「用一條長期分支裝部署設定」正是同一份文件提醒過容易出問題的做法。
+2. **代價只有一把 deploy key，而且只設一次。** 相對於第二欄省下的那點功夫，換到的是一個之後不用重做的架構——真要練到多服務、多環境，遲早得拆。
+3. **跨 repo 寫入本身就是值得練的題目。** deploy key、跨 repo 憑證是 CI 的常見題型；第二欄那招學不到。
+
+**拆出去之後，Phase 4 原本的三個難題同時消失：**
+
+| 原本的難題 | 為什麼消失 |
+| --- | --- |
+| branch protection 擋住 bot push | 寫入目標是 `notes-deploy`，那個 repo 不設任何保護 |
+| 循環觸發（CI 改了 manifest 又觸發自己） | 改的是另一個 repo，`notes` 的 workflow 不會被觸發。**`[skip ci]` 不再需要** |
+| `paths-ignore` 的 merge 死結 | `notes` 裡不再有 `deploy/**`，這個決定連同它的兩難一起作廢 |
+
+> **public repo 的一條紅線：`notes-deploy` 裡永遠不能出現 k8s 的 `Secret` 資源。**
+> `Secret` 的 `data` 欄位只是 base64 編碼，不是加密，任何人一行指令就還原。
+>
+> 目前的規劃剛好踩不到這條線：repo 是 public → GHCR package 也是 public → 拉 image 不需要憑證 → 不需要任何 Secret（`web-deployment.yaml` 裡的 `imagePullSecrets` 本來就維持註解狀態，見 Phase 6）。哪天真要用（例如把 repo 改成 private），得先用 Sealed Secrets 或 SOPS 加密再進版。
+>
+> deploy key 本身是安全的：私鑰存在 `notes` 的 Actions Secrets 裡、不在程式碼中，**fork 來的 PR 拿不到**（GitHub 不會把 secrets 傳給 fork PR，除非用 `pull_request_target`，而三個 workflow 都是 `pull_request`）。而且 deploy key 的權限只綁死 `notes-deploy` 這一個 repo，就算外洩也碰不到 `notes`——比 PAT（預設橫跨帳號下所有 repo）小得多。
 
 ### 2.3 完整時序：merge `staging → main` 到 production pod 換新
 
@@ -241,6 +270,7 @@ sequenceDiagram
     actor Dev as Developer
     participant GH as GitHub (notes repo)
     participant GA as GitHub Actions
+    participant CFG as GitHub (notes-deploy repo)
     participant GHCR as GHCR
     participant ENV as GitHub Environment (production)
     participant ARGO as Argo CD
@@ -258,18 +288,19 @@ sequenceDiagram
     Dev->>ENV: Review deployments → Approve and deploy
     ENV->>GA: 放行 bump-production
     GA->>GA: 確認 origin/main 仍等於 GITHUB_SHA<br/>(不相等就中止，避免部署舊版)
-    GA->>GA: kustomize edit set image<br/>(deploy/overlays/production)
-    GA->>GH: git push main<br/>"chore(deploy): bump production image to sha-... [skip ci]"
-    Note over GH,GA: 用 GITHUB_TOKEN push + [skip ci]，不會再觸發 ci.yml<br/>(push 身分與目標分支待 Phase 4-a 決定)
+    GA->>CFG: checkout notes-deploy (deploy key)
+    GA->>GA: kustomize edit set image<br/>(overlays/production)
+    GA->>CFG: git push main<br/>"chore(deploy): bump production image to sha-..."
+    Note over GA,CFG: 寫的是另一個 repo，不會觸發 notes 的 ci.yml<br/>所以不需要 [skip ci]
     GA->>GA: release (semantic-release 打 tag、發 Release)
 
     alt 偵測方式 A：polling（預設，每 3 分鐘）
         loop 每 180 秒
-            ARGO->>GH: git fetch main
+            ARGO->>CFG: git fetch main
         end
-        GH-->>ARGO: 發現新 commit，desired state 改變
+        CFG-->>ARGO: 發現新 commit，desired state 改變
     else 偵測方式 B：webhook（需要 Argo CD 有公網可達的 URL）
-        GH->>ARGO: POST /api/webhook (push event)
+        CFG->>ARGO: POST /api/webhook (push event)
     end
 
     ARGO->>ARGO: 比對 live state vs Git → OutOfSync
@@ -545,25 +576,67 @@ tag 策略（由 `metadata-action` 兩條規則產生）：
 2. `docker buildx imagetools inspect ghcr.io/liaooliver/notes:staging` 列出 amd64 與 arm64 兩筆。
 3. 在 Mac 上 `docker run --rm -p 8080:80 ghcr.io/liaooliver/notes:staging` 能跑起來（Mac 是 arm64，拉到的會是 arm64 那份）。
 
-#### Phase 3：`deploy/` 目錄（kustomize base + overlays）
+#### Phase 3：建 `notes-deploy` repo（kustomize base + overlays）
+
+這個 Phase 產出的東西**不在 `notes` 裡**，而是一個新的 repo（理由見第 2.2 節）。分三步。
+
+##### 3-a. 建 repo
+
+```bash
+gh repo create liaooliver/notes-deploy --public \
+  --description "GitOps manifests for liaooliver/notes (Argo CD source of truth)"
+```
+
+**public，且刻意不設任何 branch protection**——CI 要能直接 push 進 `main`，這正是拆出來的目的。
+這個 repo 裡只放部署設定，**一行程式碼都不放**。
+
+##### 3-b. 產 deploy key，讓 `notes` 的 CI 能寫 `notes-deploy`
+
+`GITHUB_TOKEN` 只在自己的 repo 有效，跨 repo 寫入需要另一把憑證。用 deploy key 最小：它綁死單一 repo，比 PAT（預設橫跨整個帳號）安全得多。
+
+```bash
+# 1) 產一組專用金鑰（不要設 passphrase，CI 沒有人可以輸入）
+ssh-keygen -t ed25519 -N "" -C "notes-ci@deploy" -f /tmp/notes-deploy-key
+
+# 2) 公鑰 → notes-deploy 的 Deploy keys，務必勾 write
+gh repo deploy-key add /tmp/notes-deploy-key.pub \
+  --repo liaooliver/notes-deploy --title "notes CI" --allow-write
+
+# 3) 私鑰 → notes 的 Actions secret
+gh secret set DEPLOY_REPO_SSH_KEY --repo liaooliver/notes < /tmp/notes-deploy-key
+
+# 4) 本機的私鑰用完就刪，GitHub 那兩邊才是它該待的地方
+rm -f /tmp/notes-deploy-key /tmp/notes-deploy-key.pub
+```
+
+> `--allow-write` 一定要加。少了它 CI 能 clone 但 push 會被拒，而錯誤訊息只說 `access denied`，不會告訴你是少勾了一個選項。
+
+##### 3-c. 檔案樹
 
 ```
-deploy/
+notes-deploy/
 ├── base/
 │   ├── kustomization.yaml
 │   ├── web-deployment.yaml
 │   ├── web-service.yaml
 │   └── ingress.yaml
-└── overlays/
-    ├── staging/
-    │   └── kustomization.yaml
-    └── production/
-        └── kustomization.yaml
+├── overlays/
+│   ├── staging/
+│   │   └── kustomization.yaml
+│   └── production/
+│       └── kustomization.yaml
+├── argocd/                     # Phase 5.5 用，Argo CD 的 Application 定義
+│   ├── notes-staging.yaml
+│   └── notes-production.yaml
+└── .github/workflows/
+    └── manifest-check.yml      # 見 Phase 4 末尾
 ```
+
+**兩個環境是兩個目錄，不是兩條分支。** 這是 Argo CD 建議的做法：用分支分環境會讓「把 staging 驗過的設定帶到 production」變成 merge，而 merge 會夾帶你不想帶的東西。用目錄就只是改各自的 `kustomization.yaml`。
 
 > **為什麼第一輪只有一個服務，卻已經叫 `notes-web` 而不是 `notes`？** 因為 Phase 9 會加上 `notes-api`，屆時若要把既有的 Service 從 `notes` 改名，`Service` 名稱是 Ingress、Deployment selector、Argo CD 資源追蹤三處共同的識別，改名等於刪掉再建一個（Argo CD 會 prune 掉舊的，中間有停機）。**從第一天就用最終名稱，成本是零。**
 
-`deploy/base/web-deployment.yaml`：
+`base/web-deployment.yaml`：
 
 ```yaml
 apiVersion: apps/v1
@@ -601,7 +674,7 @@ spec:
             limits: { cpu: 100m, memory: 64Mi }
 ```
 
-`deploy/base/web-service.yaml`：
+`base/web-service.yaml`：
 
 ```yaml
 apiVersion: v1
@@ -617,7 +690,7 @@ spec:
       targetPort: 80
 ```
 
-`deploy/base/ingress.yaml`（k3s 內建 Traefik，不用另外裝 ingress controller）：
+`base/ingress.yaml`（k3s 內建 Traefik，不用另外裝 ingress controller）：
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -639,7 +712,7 @@ spec:
                   number: 80
 ```
 
-`deploy/base/kustomization.yaml`：
+`base/kustomization.yaml`：
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -650,7 +723,7 @@ resources:
   - ingress.yaml
 ```
 
-`deploy/overlays/staging/kustomization.yaml`：
+`overlays/staging/kustomization.yaml`：
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -672,20 +745,23 @@ patches:
         value: notes-staging.local
 ```
 
-`deploy/overlays/production/kustomization.yaml` 同結構，`namespace: notes-production`、`host: notes.local`、可加 `replicas: 2` 的 patch。
+`overlays/production/kustomization.yaml` 同結構，`namespace: notes-production`、`host: notes.local`、可加 `replicas: 2` 的 patch。
 
 驗證（不需要 cluster）：
 
 ```bash
-kubectl kustomize deploy/overlays/staging
-kubectl kustomize deploy/overlays/production
+# 在 notes-deploy repo 的根目錄執行
+kubectl kustomize overlays/staging
+kubectl kustomize overlays/production
 ```
 
-兩個都能吐出完整 YAML、image 欄位帶佔位 tag、namespace 正確，就可以 merge。這個檢查之後會被 Phase 4 的 `manifest-check` job 自動化。
+兩個都能吐出完整 YAML、image 欄位帶佔位 tag、namespace 正確，就可以 push。這個檢查之後會被 `notes-deploy` 自己的 `manifest-check` workflow 自動化（見 Phase 4 末尾）。
 
 #### Phase 4：把 `ops-handoff` 的 `echo` 換成真的 manifest bump
 
 拆成兩個 job：`bump-staging`（push `staging` 觸發、不需審核）跟 `bump-production`（push `main` 觸發、綁 `environment: production`）。`encryption` job 移除。
+
+**兩個 job 都不寫 `notes`，只寫 `notes-deploy`。** 這是第 2.2 節定案的直接結果，也是為什麼這個 Phase 比原始設計簡單得多——`[skip ci]`、`paths-ignore`、branch protection 三件事全都不用處理了（推導過程見本節末尾的「為什麼不再撞 branch protection」）。
 
 ##### 先處理競態：兩次 push 靠太近會把舊 image 部署回去
 
@@ -753,10 +829,10 @@ jobs:
     needs: docker
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
-    permissions:
-      contents: write
+    # 不再需要 contents: write —— 這個 job 不寫 notes，只寫 notes-deploy，
+    # 而那把權限來自 DEPLOY_REPO_SSH_KEY，不是 GITHUB_TOKEN。
     steps:
-      - name: Checkout Code
+      - name: Checkout app repo（只為了做下面那道競態檢查）
         uses: actions/checkout@v7
         with:
           ref: staging
@@ -771,29 +847,38 @@ jobs:
             exit 1
           fi
 
+      - name: Checkout config repo
+        uses: actions/checkout@v7
+        with:
+          repository: liaooliver/notes-deploy
+          ssh-key: ${{ secrets.DEPLOY_REPO_SSH_KEY }}
+          path: notes-deploy
+
       - name: Set image tag in overlays/staging
         env:
           IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+        working-directory: notes-deploy/overlays/staging
         run: |
-          cd deploy/overlays/staging
           kustomize edit set image "ghcr.io/liaooliver/notes=ghcr.io/liaooliver/notes:${IMAGE_TAG}"
           git --no-pager diff
 
       - name: Commit and Push
         env:
           IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+        working-directory: notes-deploy
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add deploy/overlays/staging/kustomization.yaml
+          git add overlays/staging/kustomization.yaml
           git diff --cached --quiet && { echo "manifest 沒有變化，不用 commit"; exit 0; }
           # 訊息用純 ASCII：commitlint 的 subject 規則對全形箭頭不友善
-          git commit -m "chore(deploy): bump staging image to ${IMAGE_TAG} [skip ci]"
-          # push 失敗要讓 job 紅掉，不要靜默吞掉
-          git push origin HEAD:staging || {
-            echo "::error::push 失敗（可能是 branch protection 或 non-fast-forward）"
-            exit 1
-          }
+          # 不需要 [skip ci]：這是另一個 repo，notes 的 ci.yml 根本不會看到它
+          git commit -m "chore(deploy): bump staging image to ${IMAGE_TAG}"
+          # staging 與 main 兩個 run 可能同時 push notes-deploy → non-fast-forward。
+          # rebase 重試一次；仍失敗就讓 job 紅掉，不要靜默吞掉。
+          git push origin HEAD:main \
+            || { git pull --rebase origin main && git push origin HEAD:main; } \
+            || { echo "::error::push 到 notes-deploy 失敗"; exit 1; }
 
   # 4b. production 要先過 environment 審核
   bump-production:
@@ -802,10 +887,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
-    permissions:
-      contents: write
     steps:
-      - name: Checkout Code
+      - name: Checkout app repo（只為了做下面那道競態檢查）
         uses: actions/checkout@v7
         with:
           ref: main
@@ -821,27 +904,34 @@ jobs:
             exit 1
           fi
 
+      - name: Checkout config repo
+        uses: actions/checkout@v7
+        with:
+          repository: liaooliver/notes-deploy
+          ssh-key: ${{ secrets.DEPLOY_REPO_SSH_KEY }}
+          path: notes-deploy
+
       - name: Set image tag in overlays/production
         env:
           IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+        working-directory: notes-deploy/overlays/production
         run: |
-          cd deploy/overlays/production
           kustomize edit set image "ghcr.io/liaooliver/notes=ghcr.io/liaooliver/notes:${IMAGE_TAG}"
           git --no-pager diff
 
       - name: Commit and Push
         env:
           IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+        working-directory: notes-deploy
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add deploy/overlays/production/kustomization.yaml
+          git add overlays/production/kustomization.yaml
           git diff --cached --quiet && { echo "manifest 沒有變化，不用 commit"; exit 0; }
-          git commit -m "chore(deploy): bump production image to ${IMAGE_TAG} [skip ci]"
-          git push origin HEAD:main || {
-            echo "::error::push 失敗（可能是 branch protection 或 non-fast-forward）"
-            exit 1
-          }
+          git commit -m "chore(deploy): bump production image to ${IMAGE_TAG}"
+          git push origin HEAD:main \
+            || { git pull --rebase origin main && git push origin HEAD:main; } \
+            || { echo "::error::push 到 notes-deploy 失敗"; exit 1; }
 
   # 5. release 改成 needs: bump-production
   release:
@@ -854,11 +944,13 @@ jobs:
 > `ubuntu-latest` runner image 目前內建 `kustomize`（跟 `kubectl`、`helm` 一起列在 runner 的 installed software 清單）。
 > 若之後 runner image 拿掉了，加一步 `imranismail/setup-kustomize@v2` 即可；`kubectl kustomize` 只能 build 不能 `edit`，不能拿來替代。
 
-##### 這一步會撞到 branch protection，而且問題比「換一把 token」大
+##### 為什麼不再撞 branch protection（4-a 的盤點結果）
 
-`main` 目前要求「必須透過 PR 合併」，`github-actions[bot]` 用 `GITHUB_TOKEN` 直接 `git push origin main` 會被擋掉。semantic-release 的 `@semantic-release/git` 在 run #32 就被擋過（GH006），當時的決定是不寫回 `main`，見 [`release-automation.md`](./release-automation.md) 第五階段；run #39 已驗證那條 tag-only 路徑可行（第六階段）。
+**結論放最前面：上面那兩個 job 不會碰到 branch protection，因為它們根本不寫 `notes`。** 這一段保留完整的推導，因為它就是第 2.2 節改成獨立 repo 的理由——不讀也能照著做，但讀了才知道為什麼不是照抄別人的 `GITHUB_TOKEN` 寫法。
 
-**但 manifest bump 退無可退**——發版可以「不寫回 repo」，改 image tag 不行，一定要有一個能 push 進受保護分支的身分。
+**原本的問題。** 最初的設計是把 manifest 放在 `notes` 的 `deploy/` 目錄，bump commit 直接 push 回 `staging` / `main`。但這兩條分支都要求「必須透過 PR 合併」，`github-actions[bot]` 用 `GITHUB_TOKEN` 直接 push 會被擋掉。semantic-release 的 `@semantic-release/git` 在 run #32 就被擋過（GH006），當時的決定是不寫回 `main`，見 [`release-automation.md`](./release-automation.md) 第五階段；run #39 已驗證那條 tag-only 路徑可行（第六階段）。
+
+**但 manifest bump 退無可退**——發版可以「不寫回 repo」，改 image tag 不行，一定要有個地方能寫。
 
 先看清楚 run #32 到底被幾條規則擋下：
 
@@ -877,7 +969,7 @@ remote: - 3 of 3 required status checks are expected.       ← 規則 B
 | 規則 B 能不能對特定身分豁免 | **不能**。唯一開關是「Include administrators」，而 `github-actions[bot]` 永遠不可能是 admin | 能，bypass list 涵蓋 |
 | 被擋下時的錯誤碼 | `GH006: Protected branch update failed` | `GH013: Repository rule violations found` |
 
-關鍵在於：bump commit 帶 `[skip ci]`、又是 bot 產生的 push，**三個 required check 一個都不會跑**，所以規則 B 必然觸發。在 classic 底下，規則 B 沒有任何身分能豁免——**換成 GitHub App token 或 PAT 也一樣會失敗**，因為 token 種類不會讓 status check 憑空通過。
+關鍵在於：bump commit 帶 `[skip ci]`、又是 bot 產生的 push，**三個 required check 一個都不會跑**，所以規則 B 必然觸發。在 classic 底下規則 B 沒有任何身分能豁免——**換成 GitHub App token 或 PAT 也一樣失敗**，因為 token 種類不會讓 status check 憑空通過。
 
 所以真正的決定矩陣是這樣，橫軸是機制不是 token：
 
@@ -887,77 +979,53 @@ remote: - 3 of 3 required status checks are expected.       ← 規則 B
 | GitHub App token（`actions/create-github-app-token@v3`） | 規則 B 無解，也會失敗 | 可行；代價是「bot push 不觸發 workflow」那層保險消失 |
 | Fine-grained PAT | 同上，失敗 | **不採用**：綁個人帳號、會過期、權限是帳號層級 |
 
-**這是「要不要把 `main` / `staging` 從 classic 遷到 ruleset」的決定，不是「用哪把 token」的決定。**
-`release-automation.md` 第五階段當初列的「建 GitHub App / PAT，加入 **ruleset** 的 bypass 名單」，重點一直在後半句。
+**這從來不是「用哪把 token」的決定。** `release-automation.md` 第五階段當初列的「建 GitHub App / PAT，加入 **ruleset** 的 bypass 名單」，重點一直在後半句。
 
-> **run #32 的錯誤碼已經洩露了一半答案。** 那次的輸出是 `GH006`，代表 `main` 現在走的是 classic——也就是矩陣的左欄，而左欄三格都是失敗。不過眼見為憑，動手前還是到 Settings 看一眼（30 秒，比推論可靠）。
+##### 4-a 盤點結果（2026-09-19 執行完畢）
 
-##### 4-a. 動手之前：盤點保護機制並實測
+Settings 兩頁看過，並用 `gh api repos/liaooliver/notes/branches/<branch>/protection` 讀出實際值。`main` 與 `staging` 完全相同：
 
-三個步驟，順序不能顛倒：
-
-**1. 盤點（人工，30 秒）**：Settings → Branches 和 Settings → Rules，確認 `main` / `staging` 現在各自是 classic 還是 ruleset。兩條分支可能不一樣。
-
-**2. 決定**：若是 classic，要不要遷 ruleset？這會牽動第 2.2 節（manifest 放哪裡）——如果不想動保護機制，那一節的第三個選項（不受保護的 `deploy` 分支）成本可能更低。**兩件事一起決定，不要分開。**
-
-**3. 實測**：把下面這個 workflow 放到一條拋棄式分支上，push 上去就會跑。
-
-```yaml
-# .github/workflows/push-smoke-test.yml
-# 放在拋棄式分支 chore/push-smoke-test 上，測完連分支一起刪。
-on:
-  push:
-    branches: [chore/push-smoke-test]
-jobs:
-  t:
-    runs-on: ubuntu-latest
-    permissions: { contents: write }
-    steps:
-      - uses: actions/checkout@v7
-        with: { ref: staging, fetch-depth: 0 }
-      - run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit --allow-empty -m "chore: verify bot push permission [skip ci]"
-          git push origin HEAD:staging
-```
-
-> **為什麼用 `push` 觸發而不是 `workflow_dispatch`？** `workflow_dispatch` 的 workflow 必須存在於**預設分支**才叫得出來——放在其他分支上，Actions 頁面的 Run workflow 下拉選單根本不會列出它。用它就得先開 PR 進 `main`、合併、手動觸發、再開一張 PR 刪掉，`main` 平白被動兩次。
-> `push` 觸發沒有這個限制：**workflow 檔案「所在」的分支，和它「push 目標」的分支，是兩件獨立的事**。檔案待在拋棄式分支，job 照樣能 push 到 `staging`。
-
-實測時要記得的三件事：
-
-- **先測 `staging`，通過再測 `main`。** 兩條分支的規則可能不同，`staging` 的結論不能直接套到 `main`。
-- **保留策略：不 revert，保留那筆 empty commit。** `git revert` 一個空 commit 會直接報 `nothing to commit`；硬要清只能 force-push，而受保護分支正好做不到。commit 訊息本身就是記錄，保留最乾淨。
-- **失敗時錯誤碼就是答案。** `GH006` 代表 classic、`GH013` 代表 ruleset，底下列出的規則會直接告訴你是 A 還是 B 擋的，決定你落在矩陣的哪一格。
-
-##### 未定案：先確認保護機制；但 `paths-ignore` 已經定案不加
-
-三件事必須綁在一起決定，只挑其中一兩件會互相打架：
-
-| 決定 | 選擇 | 不這樣做會怎樣 |
-| --- | --- | --- |
-| 誰來 push bump commit | **待 4-a 決定**（見下表） | 直接照抄別人的 `GITHUB_TOKEN` 寫法，會在 Phase 4 第一次跑就紅掉，而且錯誤訊息只說「protected branch」，不會告訴你是機制選錯了 |
-| 主 CI 要不要加 `paths-ignore: ['deploy/**']` | **不加** | 加了之後，純 `deploy/**` 的 PR 不會跑 `Build Application`，required status check 會**永遠 Pending 卡住 merge**——第一次要 rollback（`git revert` bump commit 再開 PR 進 `main`）就會撞到 |
-| `deploy/**` 怎麼驗證 | **另開一個永遠會跑的輕量 job** | 沒有的話 manifest 寫錯要等 Argo CD 才發現 |
-
-第一列的三條分支：
-
-| 4-a 的結論 | Phase 4 要怎麼寫 |
+| 項目 | 實際值 |
 | --- | --- |
-| 維持 classic | **不可能讓 bot push 成功**（規則 B 無解）→ 改走第 2.2 節的不受保護 `deploy` 分支方案，或回頭遷 ruleset |
-| 遷 ruleset，且 bot 可選為 bypass actor | 維持 `GITHUB_TOKEN`，本節範例一字不改；`[skip ci]` +「bot push 不觸發 workflow」兩層保險都在 |
-| 遷 ruleset，但只能選 GitHub App | 改用 `actions/create-github-app-token@v3`，`actions/checkout` 要帶 `token:`；**「不觸發 workflow」那層保險消失，`[skip ci]` 成為唯一防線**；`paths-ignore` 仍然不准加，理由見下 |
+| 機制 | **classic branch protection**（Rulesets 頁是空的） |
+| 規則 A：必須透過 PR | 開啟，`required_approving_review_count: 0`，bypass 名單**空的** |
+| 規則 B：required status checks | 開啟，3 個：`Build Application` / `White-box Security Scan` / `Validate Commit Messages` |
+| Include administrators | **關閉**（admin 可繞過，但 bot 不是 admin） |
+| Restrict who can push | 未啟用 |
+| Force push | 禁止 |
 
-後兩列維持定案不動——它們的理由跟用哪把 token、哪套機制都無關。
+跟 run #32 的 GH006 兩行錯誤完全對上，第一行是規則 A、第二行是規則 B。**矩陣確定落在左欄，而左欄三格都是失敗。**
 
-不加 `paths-ignore` 的代價是 bump commit 可能讓 CI 空跑一次。若最後用的是 `GITHUB_TOKEN`，連這個代價都沒有，因為它產生的 push 本來就不觸發新的 workflow run，`[skip ci]` 是第二層保險；若用 App token，就只剩 `[skip ci]` 這一層，但它已經夠用。**無論哪一種，`paths-ignore` 都是為了擋一個已經被擋住的問題，卻引進一個真實的 merge 死結，不划算。**
+盤點時另外查到兩件事：
 
-第三項要新增的 job（放在 `ci.yml`，PR 與 push 都跑，不受任何 path filter 影響）：
+- **`required_approving_review_count` 是 0**，所以規則 A 只要求「走 PR」、不要求有人 approve。這讓「bot 自己開 PR + auto-merge」看起來像第四條路，**但它是死路**：repo 的 `allow_auto_merge` 是 `false`（要另外開），更致命的是 `GITHUB_TOKEN` 開的 PR **不會觸發 workflow**，三個 check 永遠 Pending，auto-merge 永遠不會啟動。要解就得用 App token，於是繼承了建 GitHub App 的全部成本，還多一層 PR 生命週期要管——比直接走 bypass 更差。
+- **`default_workflow_permissions` 是 `read`**，所以任何要寫入的 job 都得自己宣告 `permissions:`。`ci.yml` 的 `release` job 已經這樣寫了。
+
+**處置：繞開，不突破。** 既然 classic 底下無解，而遷 ruleset 還壓著一顆「個人 repo 的 bypass 名單能不能選到 bot」的未爆彈，第 2.2 節改為獨立 `notes-deploy` repo——CI 不再需要 push 進任何受保護的分支，這個問題整個消失。`main` 與 `staging` 的保護設定**一個字都不用動**。
+
+> **那個 `push-smoke-test.yml` 不必做了。** 它存在的目的是確認 bot 能不能 push 進受保護分支；現在不需要那個能力，測了也沒有意義。真正該測的換成「CI 能不能用 deploy key 寫進 `notes-deploy`」，而那件事 Phase 4 第一次跑就會驗到，不用另外設計實驗。
+
+##### 這三件事現在都不用決定了
+
+原本 Phase 4 卡著三個互相牽動的未定案。拆出獨立 repo 之後，前兩個直接作廢：
+
+| 原本的決定 | 現在 |
+| --- | --- |
+| 誰來 push bump commit | **作廢**。不再 push 進 `notes`，改用 deploy key 寫 `notes-deploy`（Phase 3-b） |
+| 主 CI 要不要加 `paths-ignore: ['deploy/**']` | **作廢**。`notes` 裡不再有 `deploy/**`，連帶那個「純 `deploy/**` 的 PR 會讓 required status check 永遠 Pending、rollback 再也 merge 不進去」的死結也一起消失 |
+| `deploy/**` 怎麼驗證 | **仍然要做**，但搬家：改成 `notes-deploy` 自己的 workflow |
+
+`notes-deploy/.github/workflows/manifest-check.yml`：
 
 ```yaml
-  # 驗證 kustomize 能算得出來，避免 manifest 寫錯要等 Argo CD 才發現。
-  # 刻意「永遠會跑」：它同時是 deploy/** PR 的 required status check。
+name: Manifest Check
+
+# PR 與 push 都跑。bump commit 是 deploy key 推的，
+# 不像 GITHUB_TOKEN 那樣會被「bot push 不觸發 workflow」的規則擋掉，
+# 所以每次 bump 都會自動驗一次 kustomize 算不算得出來。
+on: [push, pull_request]
+
+jobs:
   manifest-check:
     name: Validate Deploy Manifests
     runs-on: ubuntu-latest
@@ -965,13 +1033,21 @@ jobs:
       - uses: actions/checkout@v7
       - name: kustomize build
         run: |
-          for overlay in deploy/overlays/*/; do
+          for overlay in overlays/*/; do
             echo "=== ${overlay} ==="
             kubectl kustomize "${overlay}" > /dev/null || exit 1
           done
 ```
 
-驗證：merge 一個小改動進 `staging`，等 pipeline 跑完，`git log staging` 應該多一個 `chore(deploy): bump staging image to sha-... [skip ci]` commit，且 Actions 頁面**沒有**因這個 commit 再多一個 run。
+##### 驗證這個 Phase
+
+merge 一個小改動進 `staging`，等 pipeline 跑完，檢查三件事：
+
+1. **`notes-deploy` 的 `git log` 多一筆** `chore(deploy): bump staging image to sha-...`
+2. **`notes` 的 Actions 頁面沒有因此多一個 run**——這是「拆 repo 解決了循環觸發」的直接證據，而且這次不是靠 `[skip ci]` 擋的，是真的不會觸發
+3. **`notes-deploy` 的 Actions 跑了一次 `Manifest Check` 且是綠的**
+
+第 2 點如果失敗（`notes` 又跑了一次），代表有人把 `notes-deploy` 的 webhook 或 workflow 設錯了，不是 `[skip ci]` 的問題——這個架構下根本沒有 `[skip ci]`。
 
 #### Phase 5：Multipass VM + k3s + Argo CD
 
@@ -1066,9 +1142,9 @@ kubectl create namespace notes-staging
 kubectl create namespace notes-production
 ```
 
-Argo CD `Application`（放在 `deploy/argocd/`，用 `kubectl apply -f` 一次建好；repo 若是 public 不需要 repo credential）：
+Argo CD `Application`（放在 `notes-deploy` 的 `argocd/` 目錄，用 `kubectl apply -f` 一次建好；`notes-deploy` 是 public，Argo CD 唯讀就夠，不需要 repo credential）：
 
-`deploy/argocd/notes-staging.yaml`：
+`argocd/notes-staging.yaml`：
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -1079,9 +1155,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/liaooliver/notes.git
-    targetRevision: staging          # 追 staging 分支
-    path: deploy/overlays/staging
+    repoURL: https://github.com/liaooliver/notes-deploy.git
+    targetRevision: main             # notes-deploy 只有一條 main
+    path: overlays/staging           # 環境靠「目錄」分，不是靠分支
   destination:
     server: https://kubernetes.default.svc
     namespace: notes-staging
@@ -1093,7 +1169,7 @@ spec:
       - CreateNamespace=true
 ```
 
-`deploy/argocd/notes-production.yaml`：
+`argocd/notes-production.yaml`：
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -1104,9 +1180,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/liaooliver/notes.git
-    targetRevision: main             # 追 main 分支
-    path: deploy/overlays/production
+    repoURL: https://github.com/liaooliver/notes-deploy.git
+    targetRevision: main             # 同一條分支，跟 staging 只差 path
+    path: overlays/production
   destination:
     server: https://kubernetes.default.svc
     namespace: notes-production
@@ -1136,7 +1212,7 @@ spec:
 
 建議先開 `automated`，體驗完整自動鏈路；之後想練「Argo CD 手動 sync + rollback UI」再關掉。
 
-驗證：`kubectl apply -f deploy/argocd/`，Argo CD UI 應該看到兩個 Application 從 Missing → Progressing → Healthy/Synced；`kubectl -n notes-staging get pods` 有 notes pod Running（private repo 的前提見本節開頭的分岔）。
+驗證：在 `notes-deploy` 根目錄 `kubectl apply -f argocd/`，Argo CD UI 應該看到兩個 Application 從 Missing → Progressing → Healthy/Synced；`kubectl -n notes-staging get pods` 有 notes pod Running（private repo 的前提見本節開頭的分岔）。
 
 #### Phase 6：GHCR pull 權限與對外存取
 
@@ -1160,7 +1236,7 @@ for ns in notes-staging notes-production; do
 done
 ```
 
-然後把 `imagePullSecrets` 那兩行的註解拿掉——**`deploy/base/web-deployment.yaml` 與 `deploy/base/api-deployment.yaml` 兩份都要**（第二輪加了 api 之後才有第二份）。
+然後把 `imagePullSecrets` 那兩行的註解拿掉——**`notes-deploy` 的 `base/web-deployment.yaml` 與 `base/api-deployment.yaml` 兩份都要**（第二輪加了 api 之後才有第二份）。
 
 > **只改一份的症狀特別難查**：web 起得來、畫面正常出現，只有打 API 的時候 500。你會先去翻 Express 的程式碼、翻 Ingress 的 `/api` 規則，繞一大圈才想到去 `kubectl get pods` 看 api pod 其實卡在 `ImagePullBackOff`。整個掛掉反而好查。
 
@@ -1222,7 +1298,7 @@ Chrome
 
 範圍刻意收在「兩個無狀態服務」：不碰 Postgres / Redis，理由見第 0.5 節。
 
-| Phase | 改到 `deploy/` 嗎 |
+| Phase | 改到 `notes-deploy` 嗎 |
 | --- | --- |
 | **7**（Vue 化）、**8**（multi-stage + nginx.conf） | **完全不用改。** image 的內容物換了，但它仍然是「一個聽 80 port 的 web 服務」，k8s 只認 image tag |
 | **9**（加 Express） | **要改**，因為多了一個服務：base 多兩個檔、Ingress 多一條規則、overlay 的 `images:` 變兩筆 |
@@ -1363,25 +1439,26 @@ notes/
 ├── api/                          # ← 新增
 │   ├── Dockerfile                #   Express 用，單層 node:22-alpine
 │   ├── package.json
-│   └── server.js                 #   fix record 的 CRUD
-└── deploy/
-    ├── base/
-    │   ├── kustomization.yaml    # ← 改：resources 多兩筆
-    │   ├── web-deployment.yaml
-    │   ├── web-service.yaml
-    │   ├── api-deployment.yaml   # ← 新增
-    │   ├── api-service.yaml      # ← 新增
-    │   └── ingress.yaml          # ← 改：多一條 /api 規則
-    └── overlays/
-        ├── staging/kustomization.yaml     # ← 改：images 兩筆
-        └── production/kustomization.yaml  # ← 改：images 兩筆
+    └── server.js                 #   fix record 的 CRUD
+
+notes-deploy/                     # ← 另一個 repo
+├── base/
+│   ├── kustomization.yaml        # ← 改：resources 多兩筆
+│   ├── web-deployment.yaml
+│   ├── web-service.yaml
+│   ├── api-deployment.yaml       # ← 新增
+│   ├── api-service.yaml          # ← 新增
+│   └── ingress.yaml              # ← 改：多一條 /api 規則
+└── overlays/
+    ├── staging/kustomization.yaml     # ← 改：images 兩筆
+    └── production/kustomization.yaml  # ← 改：images 兩筆
 ```
 
 資料存在記憶體或 SQLite 檔（放 `emptyDir`）。**不要接 Postgres**，理由見第 0.5 節。
 
 ##### 9-b. 兩個新的 base 資源
 
-`deploy/base/api-deployment.yaml`：
+`base/api-deployment.yaml`：
 
 ```yaml
 apiVersion: apps/v1
@@ -1424,7 +1501,7 @@ spec:
           emptyDir: {}        # pod 重建資料就沒了——這是刻意的，見 9-e
 ```
 
-`deploy/base/api-service.yaml`：
+`base/api-service.yaml`：
 
 ```yaml
 apiVersion: v1
@@ -1442,7 +1519,7 @@ spec:
 
 > **`selector` 是最容易出錯的地方。** 如果 `web-service.yaml` 的 selector 只寫 `app: notes`（沒有 `component: web`），它會同時選到 web 跟 api 兩種 pod，流量隨機打到 3000 port 的 Express 上，症狀是「首頁有時正常有時 404」。`kubectl -n notes-staging get endpoints notes-web` 應該只列出 web 的 pod IP。
 
-`deploy/base/kustomization.yaml` 改成：
+`base/kustomization.yaml` 改成：
 
 ```yaml
 resources:
@@ -1536,8 +1613,8 @@ spec:
       - name: Set image tags in overlay
         env:
           IMAGE_TAG: sha-${{ github.sha }}     # 不再從 needs.docker.outputs 拿
+        working-directory: notes-deploy/overlays/staging
         run: |
-          cd deploy/overlays/staging
           kustomize edit set image \
             "ghcr.io/liaooliver/notes=ghcr.io/liaooliver/notes:${IMAGE_TAG}"
           kustomize edit set image \
@@ -1600,12 +1677,12 @@ kubectl -n notes-staging delete pod -l component=api   # 砍掉讓它重建
 | CI 閘 | build + white-box | build + white-box |
 | image | `notes:sha-<staging 的 merge commit>` + `:staging` | `notes:sha-<main 的 merge commit>` + `:main`（**是另一個 image**，見下） |
 | 人工 approval | 無 | GitHub Environment `production` |
-| manifest bump | `deploy/overlays/staging`，CI 自動 commit | `deploy/overlays/production`，Approve 後 CI 自動 commit |
-| Argo CD Application | `notes-staging`，追 `staging` 分支 | `notes-production`，追 `main` 分支 |
+| manifest bump | `notes-deploy` 的 `overlays/staging`，CI 自動 commit | `notes-deploy` 的 `overlays/production`，Approve 後 CI 自動 commit |
+| Argo CD Application | `notes-staging`，讀 `notes-deploy` 的 `overlays/staging` | `notes-production`，讀 `notes-deploy` 的 `overlays/production` |
 | Argo CD sync | automated + selfHeal + prune | automated（或 manual 當第二道閘） |
 | 部署到 | namespace `notes-staging` | namespace `notes-production` |
 | 版本號 | 無 | semantic-release 打 tag + Release |
-| Rollback | `git revert <bump commit>` → push staging → Argo CD 自動換回舊 image | `git revert <bump commit>` → 開 PR 進 main（走 branch protection）→ Argo CD 自動換回舊 image |
+| Rollback | 在 `notes-deploy` 上 `git revert <bump commit>` → push → Argo CD 自動換回舊 image | 同左。**兩邊都不必開 PR**——`notes-deploy` 不設保護，這也是拆 repo 的附帶好處：出事時 rollback 不會卡在 review |
 
 ### production 跑的不是 staging 那個 image
 
@@ -1642,7 +1719,7 @@ git push
 
 因為 **cluster 的 desired state 就是 Git 的內容**，revert 後 Argo CD 偵測到 manifest 的 image tag 變回舊值，自動 rolling update 回舊 pod。不需要記舊 image 叫什麼、不需要進 cluster 敲指令、而且這次回滾本身也是一個有 author / 時間 / 理由的 commit。`selfHeal` 開著的話，就算有人事後在 cluster 手動改回新版，Argo CD 也會再把它壓回 Git 的版本。
 
-同樣的道理，**「production 現在跑哪個版本？」答案永遠是 `git show main:deploy/overlays/production/kustomization.yaml`**，不用問任何人。
+同樣的道理，**「production 現在跑哪個版本？」答案永遠是在 `notes-deploy` 裡 `git show main:overlays/production/kustomization.yaml`**，不用問任何人。
 
 ---
 
@@ -1662,15 +1739,19 @@ git push
 
 ### CI / CD
 
-- **`GITHUB_TOKEN` push 被 branch protection 擋，而且「換一把 token」救不了。** run #32 的 GH006 同時列出兩條規則：「必須透過 PR」與「3 個 required status check」。前者在 classic branch protection 底下能用 bypass 名單解掉，**後者不能**——classic 沒有針對特定身分的 status check 豁免，唯一開關是「Include administrators」，而 `github-actions[bot]` 不可能是 admin。bump commit 帶 `[skip ci]`，三個 check 一個都不會跑，所以第二條必然觸發，**改用 GitHub App token 或 PAT 一樣失敗**。真正的變數是 classic 還是 ruleset（ruleset 的 bypass list 是整組豁免）。動手做 Phase 4 之前先做 4-a 的盤點與 smoke test，不要等 CI 紅了才處理。辨識法：被擋時 `GH006` = classic、`GH013` = ruleset。
+- **CI 不可能 push 進受保護分支，而且「換一把 token」救不了——這是拆出 `notes-deploy` 的原因。** run #32 的 GH006 同時列出兩條規則：「必須透過 PR」與「3 個 required status check」。前者在 classic branch protection 底下能用 bypass 名單解掉，**後者不能**——classic 沒有針對特定身分的 status check 豁免，唯一開關是「Include administrators」，而 `github-actions[bot]` 不可能是 admin。bump commit 又不會觸發任何 check，所以第二條必然成立，**改用 GitHub App token 或 PAT 一樣失敗**。4-a 已盤點確認 `main` / `staging` 都是 classic。辨識法：被擋時 `GH006` = classic、`GH013` = ruleset。最終解法不是突破而是繞開：manifest 搬到不受保護的 `notes-deploy`（第 2.2 節）。
 
-- **CI 自己 push 會不會再觸發 `ci.yml`？** 兩層保險：(1) commit message 帶 `[skip ci]`，GitHub Actions 原生認得；(2) 用 `GITHUB_TOKEN` 產生的 push 本來就不會觸發新的 workflow run（GitHub 防無限迴圈的設計）。**但如果 Phase 4 最後改用 GitHub App token（或 PAT），第 (2) 層保險就失效了，只剩 `[skip ci]`**——它已經夠用。**不要因此去加第三層 `on.push.paths-ignore`**，那會引進一個真正的死結，理由見下一條。
+- **拆了 repo 之後，`[skip ci]` 和 `paths-ignore` 都不需要了——但要知道當初為什麼會想用它們。** 同 repo 方案下，CI 改完 manifest 再 push 會觸發自己，得靠 `[skip ci]` 或 `GITHUB_TOKEN` 不觸發 workflow 的特性擋掉。**跨 repo 之後這個迴圈從根上不存在**：`notes` 的 workflow 不會因為 `notes-deploy` 的 commit 而觸發。所以現在的 bump commit 訊息裡沒有 `[skip ci]`，這是刻意的，不是漏寫。
 
-- **`paths-ignore` 是陷阱，不要加。** 直覺上會想用 `paths-ignore: ['deploy/**']` 避免 bump commit 觸發 CI，但這會造成一個真實的死結：純 `deploy/**` 改動的 PR 不會跑 `Build Application`，**required status check 永遠停在 Pending，PR 再也 merge 不進去** —— 而第一次要 rollback（`git revert` bump commit 再開 PR 進 `main`）改的就只有 `deploy/**`。它擋的那個問題（循環觸發）本來就已經被擋住了——用 `GITHUB_TOKEN` 是兩層，用 App token 是 `[skip ci]` 一層，兩種都夠。定案：**不加 `paths-ignore`，改用一個永遠會跑的 `manifest-check` job**（見 Phase 4）。
+- **`paths-ignore` 是陷阱，即使回到同 repo 方案也不要加。** 直覺上會想用 `paths-ignore: ['deploy/**']` 避免 bump commit 觸發 CI，但這會造成一個真實的死結：純 `deploy/**` 改動的 PR 不會跑 `Build Application`，**required status check 永遠停在 Pending，PR 再也 merge 不進去** —— 而第一次要 rollback 改的就只有 `deploy/**`。這條留著當紀錄：**用 path filter 去閃過一個 required status check，等於自己製造一個永遠無法滿足的條件。**
+
+- **跨 repo push 要自己處理 non-fast-forward。** `bump-staging` 與 `bump-production` 寫的是同一個 `notes-deploy` 的 `main`，兩邊時間靠近就會撞。同 repo 時代靠 branch protection 的順序保證擋掉一部分，現在沒有了，所以 push 要帶 `git pull --rebase` 重試一次，仍失敗就讓 job 紅掉（見 Phase 4）。
+
+- **deploy key 一定要勾 `--allow-write`。** 少勾的話 CI 能 clone 但 push 會被拒，錯誤訊息只說 `access denied`，不會告訴你是少勾了一個選項。私鑰存在 `notes` 的 Actions secret `DEPLOY_REPO_SSH_KEY`，fork 來的 PR 拿不到（前提是不要用 `pull_request_target`）。
 
 - **bump job 的競態：兩次 push 靠太近，舊 run 會把舊 image 寫回 manifest。** `IMAGE_TAG` 來自觸發時的 `github.sha`，但 `checkout ref: staging` 拿到的是**執行當下**的 HEAD，兩者之間可能已經隔了另一次 push。`bump-production` 尤其危險，因為它會停在人工審核等好幾小時。三道防線：workflow 層 `concurrency: deploy-${{ github.ref }}`（且 `cancel-in-progress: false`，不要砍掉已 Approve 的部署）、bump 前比對 `origin/<branch>` 是否仍等於 `GITHUB_SHA`、push 失敗要讓 job 紅掉。詳見 Phase 4。
 
-- **`commitlint.yml` 也要放行 bot commit，而且訊息用純 ASCII。** 早期草稿寫 `chore(deploy): staging → sha-abc1234`，那個全形箭頭要賭 commitlint 的 `subject-case` / `subject-full-stop` 規則怎麼判。定案：`chore(deploy): bump staging image to sha-<40 碼> [skip ci]`。
+- **bump commit 的訊息用純 ASCII。** （`notes-deploy` 不裝 commitlint，但格式維持一致才好讀。） 早期草稿寫 `chore(deploy): staging → sha-abc1234`，那個全形箭頭要賭 commitlint 的 `subject-case` / `subject-full-stop` 規則怎麼判。定案：`chore(deploy): bump staging image to sha-<40 碼>`（拆 repo 之後不再需要 `[skip ci]`）。
 
 - **`docker` job 用 matrix 之後不能靠 `outputs` 傳 tag。** 第二輪 build 兩個 image 時，matrix job 的 `outputs` 會互相覆蓋只留最後一個。下游改成自己組 `sha-${{ github.sha }}`，不要從 `needs.docker.outputs.image_tag` 拿（見 Phase 9-d）。
 
@@ -1702,7 +1783,7 @@ git push
 
 ### 其他
 
-- **Argo CD 的 `targetRevision: staging` 跟 GitHub 的 `staging` 分支是同一個字串，但語意不同。** 前者是「Argo CD 從哪個 ref 讀 manifest」，後者是「CI 從哪個 ref build 程式碼」。這裡刻意讓它們一致（staging Application 追 staging 分支、production 追 main），但技術上可以分開（例如兩個 Application 都追 main、只是 path 不同）。同 repo 方案下讓它們一致最不容易搞混。
+- **不要用分支來分環境。** 早期草稿讓 staging Application 追 `staging` 分支、production 追 `main`，看起來很對稱。拆出 `notes-deploy` 之後改成**兩個 Application 都追 `main`，只差 `path`**（`overlays/staging` vs `overlays/production`）。這是 Argo CD 建議的做法：用分支分環境會讓「把 staging 驗過的設定帶到 production」變成一次 merge，而 merge 會夾帶你不想帶的東西；用目錄就只是各自改各自的 `kustomization.yaml`。另外注意 `notes-deploy` 的 `main` 跟 `notes` 的 `main` 是兩個不同 repo 的分支，同名但無關。
 
 ---
 
@@ -1713,4 +1794,4 @@ git push
 | [`branching-strategy.md`](./branching-strategy.md) | `feature/* → staging → main` 的分支模型與兩層 gate | 本文完全沿用這個分支模型，只是把 gate 後面接的動作從「加密上傳」換成「bump manifest → Argo CD 部署」。第 4 節的表格是那份文件表格的延伸版。 |
 | [`release-automation.md`](./release-automation.md) | commitlint + semantic-release 的演變過程與坑 | 本文 Phase 4 會踩到它預告的「`GITHUB_TOKEN` push 被 branch protection 擋」；Phase 10 讓 semantic-release 的版本 tag 也打到 image 上。 |
 | [`use-cases.md`](./use-cases.md) | **現況**所有觸發情境的逐條說明與時序圖（開 PR、merge 進 staging、promotion 到 main、approve、LLM assist……） | 本文第 2.3 節的時序圖是那份文件「情境：staging → main promotion」在新架構下的未來版。實作完 Phase 4 之後，那份文件的 `ops-handoff` 段落要同步更新。 |
-| [`llm-pr-assist.md`](./llm-pr-assist.md) | Gemini PR 助手 | 不受本文影響；`llm-pr-assist.yml` 跟 `ci.yml` 互相獨立。若 `deploy/` 的 bump commit 之後改成走 PR，LLM 會對它做摘要，可以考慮在 workflow 加 `paths-ignore: ['deploy/**']` 省額度。 |
+| [`llm-pr-assist.md`](./llm-pr-assist.md) | Gemini PR 助手 | 不受本文影響；`llm-pr-assist.yml` 跟 `ci.yml` 互相獨立。bump commit 現在落在 `notes-deploy`，那個 repo 沒有裝這個 workflow，所以不會消耗 Gemini 額度。 |
