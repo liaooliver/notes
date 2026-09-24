@@ -3,9 +3,10 @@
   "version": "1.2.1",
   "description": "個人筆記存放區。",
   "main": "index.js",
+  "workspaces": ["frontend"],
   "scripts": {
-    "test": "node --test",
-    "build": "rm -rf dist && mkdir -p dist && cp src/index.html src/app.js dist/",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspace frontend",
     "commitlint": "commitlint",
     "prepare": "husky",
     "release": "semantic-release"
