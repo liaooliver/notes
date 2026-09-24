@@ -20,7 +20,7 @@ feature/* ──PR──▶ staging ──PR──▶ main ──(approve)──
 | [docs/branching-strategy.md](docs/branching-strategy.md) | 為什麼是 `feature → staging → main`、兩層 gate 的設計 |
 | [docs/release-automation.md](docs/release-automation.md) | commitlint / husky / semantic-release 的演進與踩坑紀錄 |
 | [docs/llm-pr-assist.md](docs/llm-pr-assist.md) | 用 Gemini 在 PR 上自動做 commit 建議、摘要、code review |
-| [docs/gitops-roadmap.md](docs/gitops-roadmap.md) | 下一步：Docker → GHCR → Argo CD → k3s 的 GitOps 延伸設計 |
+| [docs/gitops-roadmap.md](docs/gitops-roadmap.md) | 下一步：Docker → GHCR → Argo CD → k3s 的 GitOps 延伸設計（M4 + Multipass 環境，分兩輪推進） |
 | [導讀 Artifact](https://claude.ai/artifact/5tohUUhm9qZzQZPJgjTWca) | 互動式導讀頁：把上面幾份文件整理成可逐步播放的情境圖鑑 |
 
 ## Workflow 檔案

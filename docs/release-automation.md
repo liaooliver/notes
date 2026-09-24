@@ -123,7 +123,58 @@ remote: - 3 of 3 required status checks are expected.
 
 同一輪也把 `production` environment 的 Deployment branches 限定為 `main`，`ci.yml` 的 push 觸發只留 `main`（PR 已跑過的檢查不在 merge 進 `staging` 後重跑）。
 
+### 第六階段：run #39 驗證 tag-only 發版（2026-09-18）
+
+第五階段的解法當下沒有機會驗證——修正是在 `staging` 上，`main` 還停在 run #32 的狀態。
+後來把 `staging` 累積的 4 個 PR（#14 #15 #16 #17）用 PR #18 promote 到 `main`（commit `daf7ae8`），
+run #39 完整跑完 build → white-box → encryption → ops-handoff（人工 approve）→ release，5 個 job 全綠，總時長 16m22s
+（其中 ops-handoff 等人按 Approve 佔了大部分）。
+
+驗證到的三件事：
+
+| 項目 | 結果 |
+| --- | --- |
+| `release` job 是否再撞 GH006 | 沒有。`Run semantic-release` 42s 正常結束 |
+| tag 與 Release | `notes-v1.3.0` 已打，GitHub Release 標記為 Latest，release notes 完整列出 `notes-v1.2.1` 之後的所有 feat / fix |
+| 是否有版本 commit 寫回 `main` | 沒有。`main` 的 tip 仍是 `daf7ae8` 這個 merge commit，符合預期 |
+
+順帶驗證了 Phase 0 的 build 修正在 CI 裡也生效：`dist-files` artifact 是 863 bytes，
+對得上真正的 `index.html`（1030 B）+ `app.js`（234 B），不再是 placeholder 那行 `<h1>`。
+
+因為 `@semantic-release/git` 已移除，`package.json` 的 `version` 仍停在 `1.2.1`、`CHANGELOG.md` 仍停在 1.2.1。
+**這是預期行為**，版本的唯一事實來源是 tag 與 GitHub Releases。看到這兩個檔案跟 Release 對不起來時不要「順手修好」。
+
 ## 已知的坑，還沒踩到但要留意
 
 - ~~`package.json` 的 `build` script 只是 placeholder~~：已改成 `cp src/index.html src/app.js dist/`（`gitops-roadmap.md` 的 Phase 0）。
 - 上面「為什麼不需要再手動判斷版本 commit」那段講的 `[skip ci]` / `GITHUB_TOKEN` 機制，在第五階段之後已經用不到（不再有版本 commit），留著當作歷史紀錄。
+- **Actions 的 Node 20 執行環境即將淘汰。** run #39 的 `build` / `white-box` / `encryption` 三個 job 都出現同一則警告：
+
+  ```
+  Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on
+  Node.js 24: actions/checkout@v4, actions/setup-node@v4, actions/upload-artifact@v4,
+  actions/download-artifact@v4
+  ```
+
+  當時只是警告、不影響結果（GitHub 已自動改用 Node 24 跑）。跟 `node-version: 22` 是兩件不同的事：
+  那個是「workflow 裡跑我們自己的 `npm` 指令用哪個 Node」，這個是「action 本身的 JS 用哪個 Node runtime 執行」。
+
+  **2026-09-19 已處理，但沒有照原本寫的升 v5。** 當時的結論是「升到 v5」，實際動手時發現 v5 已經落後兩到三個 major，
+  而且 `upload-artifact@v5` 對 Node 24 只是初步支援、要到 v6 才真的預設跑 Node 24 —— 升 v5 等於留一個半成品。
+  最後三個 workflow 檔案一起升到當時的最新版：
+
+  | action | 之前 | 之後 | 用到幾處 |
+  | --- | --- | --- | --- |
+  | `actions/checkout` | v4 | **v7** | 7 |
+  | `actions/setup-node` | v4 | **v7** | 5 |
+  | `actions/upload-artifact` | v4 | **v7** | 2 |
+  | `actions/download-artifact` | v4 | **v8** | 2 |
+
+  `upload-artifact@v7` 與 `download-artifact@v8` 是配對的一組（同一天發布，v8 就是為了支援 v7 的直傳而改的），
+  升級時兩個要一起動，不能只升其中一個。
+
+  **教訓：文件裡寫死的版本號，動手前要先查一次上游現況。** 上面那句「升到 v5」是 2026-09-18 寫的，
+  隔天執行時才發現 v5 早在 2025-08 就發布、當時已經被 v6/v7/v8 蓋過去——寫的當下就已經過期了，
+  只是沒人去查。`gh api repos/actions/checkout/releases/latest` 一行就能問到，比憑印象寫版本號可靠。
+- **`ubuntu-latest` 會在 2026-10-19 起遷移到 Ubuntu 26。** run #39 的 notice 提到。目前 workflow 沒有綁特定 OS 版本的東西，
+  但 `white-box` job 直接 `docker run` semgrep、Phase 1 之後還會加 docker build，遷移當下值得重跑一次確認。

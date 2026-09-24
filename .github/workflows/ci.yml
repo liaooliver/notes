@@ -1,16 +1,26 @@
 name: Enterprise CI/CD Pipeline
 
 on:
-  # staging 的 PR 已經跑過 build + white-box，merge 後不再重跑；
-  # main 的 push 仍需要重跑，因為 encryption 要用同一個 run 的 build 產物。
+  # push 監聽 staging 是 GitOps 的必要條件：image 必須從「合併後」的程式碼
+  # build 出來，所以 staging 一定要有 push 事件。這等於把 PR #14
+  # (ci: skip pipeline re-run on push to staging) 的決定改回來——
+  # 代價是 staging 的 PR 已經跑過的 build + white-box 會在 merge 後重跑一次（約 1 分鐘），
+  # 換到的是 staging 環境真的會換版。這是刻意的，不是手滑改回來的。
   push:
-    branches: [ "main" ]
+    branches: [ "main", "staging" ]
   pull_request:
     branches: [ "main", "staging" ]
 
 # 預設最小權限；只有 release job 需要寫入權限，於該 job 另外覆寫。
 permissions:
   contents: read
+
+# 同一條分支同時只留一個 run，避免兩次 push 靠太近把舊 image 寫回 manifest。
+# cancel-in-progress 一定要 false：bump-production 可能正停在人工審核，
+# 被取消掉的話那個 Approve 就白按了。寧可讓舊 run 自己走到「分支已前進」的檢查中止。
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   # 1. Build 階段
@@ -19,10 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: 'npm'
@@ -37,10 +47,10 @@ jobs:
         run: npm run build
 
       - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-files
-          path: dist/
+          path: frontend/dist/
           retention-days: 1
 
   # 2. White-box 階段 (等效 Checkmarx / Mend / Trivy)
@@ -50,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 2-1. SAST 靜態程式碼掃描 (等效 Checkmarx)
       - name: Run Semgrep SAST
@@ -67,67 +77,203 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '1' # 抓到高風險 CVE 立即熔斷 Pipeline
 
-  # 3. Encryption 階段 (等效產物加密保護)
-  encryption:
-    name: Encrypt Artifacts
+  # 3. Docker 階段：把通過測試 + 掃描的 dist/ 打包成 multi-arch image 推到 GHCR
+  docker:
+    name: Build & Push Image
     needs: white-box
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.sha.outputs.tag }}
+      image_digest: ${{ steps.push.outputs.digest }}
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      # 自己算 tag，不要拿 metadata-action 的 version 輸出：
+      # 那個輸出會依 tag 優先序回傳 "staging" / "main"，manifest 需要的是唯一的 sha tag。
+      - name: Compute Image Tag
+        id: sha
+        run: echo "tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      # 用 build job 的產物，不重新 build——確保「進 image 的東西」=「通過測試的東西」
       - name: Download Build Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-files
           path: dist
 
-      - name: Package and Encrypt Artifact
-        run: |
-          tar -czf dist.tar.gz dist/
-          openssl enc -aes-256-cbc -salt -pbkdf2 \
-            -in dist.tar.gz \
-            -out dist.tar.gz.enc \
-            -k "${{ secrets.DEPLOY_ENCRYPTION_KEY }}"
+      # QEMU：讓 amd64 的 runner 能產出 arm64 的 layer。
+      # 沒有這兩步，build 出來只有 amd64，Apple Silicon 上的 k3s 拉不動。
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
 
-      - name: Upload Encrypted Artifact
-        uses: actions/upload-artifact@v4
+      # buildx：預設的 docker builder 一次只能出一種架構，多架構一定要 buildx
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
         with:
-          name: encrypted-dist
-          path: dist.tar.gz.enc
-          retention-days: 7
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-  # 4. Ops-handoff 階段 (等效運維審批與交付門禁)
-  ops-handoff:
-    name: Ops Handoff / Production Release
-    needs: encryption
+      - name: Docker Metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=ref,event=branch
+
+      - name: Build and Push
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64   # ← 關鍵的一行
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # 3. Bump staging manifest：staging 自動部署，不需人工審核
+  bump-staging:
+    name: Bump Staging Manifest
+    needs: docker
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    # 注意這裡沒有 contents: write —— 這個 job 不寫 notes，
+    # 寫 notes-deploy 的權限來自 DEPLOY_REPO_SSH_KEY，跟 GITHUB_TOKEN 無關。
+    steps:
+      # 這次 checkout 只為了做下面那道競態檢查，只要比對一個 SHA，depth 1 就夠
+      - name: Checkout app repo
+        uses: actions/checkout@v7
+        with:
+          ref: staging
+          fetch-depth: 1
+
+      - name: Abort if branch has moved on
+        run: |
+          git fetch origin staging
+          REMOTE_HEAD=$(git rev-parse origin/staging)
+          if [ "$REMOTE_HEAD" != "${GITHUB_SHA}" ]; then
+            echo "::warning::staging 已前進到 ${REMOTE_HEAD}，本 run 是 ${GITHUB_SHA}，放棄 bump"
+            exit 1
+          fi
+
+      # 這次 checkout 要 depth 0 —— 下面 push 撞車時要 git pull --rebase，
+      # shallow clone 做 rebase 會出事。兩個 checkout 的需求剛好相反。
+      - name: Checkout config repo
+        uses: actions/checkout@v7
+        with:
+          repository: liaooliver/notes-deploy
+          ssh-key: ${{ secrets.DEPLOY_REPO_SSH_KEY }}
+          path: notes-deploy
+          fetch-depth: 0
+
+      - name: Set image tag in overlays/staging
+        env:
+          IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+        working-directory: notes-deploy/overlays/staging
+        run: |
+          kustomize edit set image "ghcr.io/liaooliver/notes=ghcr.io/liaooliver/notes:${IMAGE_TAG}"
+          git --no-pager diff
+
+      - name: Commit and Push
+        env:
+          IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+        working-directory: notes-deploy
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add overlays/staging/kustomization.yaml
+          git diff --cached --quiet && { echo "manifest 沒有變化，不用 commit"; exit 0; }
+          # 訊息用純 ASCII：全形箭頭要賭 commitlint 的 subject 規則怎麼判，不值得
+          # 不需要 [skip ci]：這是另一個 repo，notes 的 ci.yml 根本看不到它
+          git commit -m "chore(deploy): bump staging image to ${IMAGE_TAG}"
+          # staging 與 main 兩邊可能同時 push notes-deploy → non-fast-forward。
+          # rebase 重試一次；仍失敗就讓 job 紅掉，不要靜默吞掉。
+          git push origin HEAD:main \
+            || { git pull --rebase origin main && git push origin HEAD:main; } \
+            || { echo "::error::push 到 notes-deploy 失敗"; exit 1; }
+
+  # 4. Bump production manifest：取代原本的 ops-handoff，一樣要先過人工審核
+  bump-production:
+    name: Ops Handoff / Bump Production Manifest
+    needs: docker
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    environment: production # 綁定 Production 環境，觸發手動審核等待
+    environment: production   # 沿用原本 ops-handoff 的審核閘，只是換掉執行內容
     steps:
-      - name: Download Encrypted Artifact
-        uses: actions/download-artifact@v4
+      - name: Checkout app repo
+        uses: actions/checkout@v7
         with:
-          name: encrypted-dist
+          ref: main
+          fetch-depth: 1
 
-      - name: Execute Deployment
+      # 這一步在 production 特別重要：Approve 可能已經等了好幾個小時
+      - name: Abort if branch has moved on
         run: |
-          echo "審核通過，取得加密檔 dist.tar.gz.enc，開始執行發布邏輯..."
+          git fetch origin main
+          REMOTE_HEAD=$(git rev-parse origin/main)
+          if [ "$REMOTE_HEAD" != "${GITHUB_SHA}" ]; then
+            echo "::warning::main 已前進到 ${REMOTE_HEAD}，本 run 是 ${GITHUB_SHA}，放棄 bump"
+            exit 1
+          fi
 
-  # 5. Release 階段 (build/掃描/加密/ops-handoff 全部通過後，才算版本號並發布)
+      - name: Checkout config repo
+        uses: actions/checkout@v7
+        with:
+          repository: liaooliver/notes-deploy
+          ssh-key: ${{ secrets.DEPLOY_REPO_SSH_KEY }}
+          path: notes-deploy
+          fetch-depth: 0
+
+      - name: Set image tag in overlays/production
+        env:
+          IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+        working-directory: notes-deploy/overlays/production
+        run: |
+          kustomize edit set image "ghcr.io/liaooliver/notes=ghcr.io/liaooliver/notes:${IMAGE_TAG}"
+          git --no-pager diff
+
+      - name: Commit and Push
+        env:
+          IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+        working-directory: notes-deploy
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add overlays/production/kustomization.yaml
+          git diff --cached --quiet && { echo "manifest 沒有變化，不用 commit"; exit 0; }
+          git commit -m "chore(deploy): bump production image to ${IMAGE_TAG}"
+          git push origin HEAD:main \
+            || { git pull --rebase origin main && git push origin HEAD:main; } \
+            || { echo "::error::push 到 notes-deploy 失敗"; exit 1; }
+
+  # 5. Release 階段 (build/掃描/bump-production 全部通過後，才算版本號並發布)
   release:
     name: Semantic Release
-    needs: ops-handoff
+    needs: bump-production
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: 'npm'
