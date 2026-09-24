@@ -143,7 +143,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
- # 3. Bump staging manifest：staging 自動部署，不需人工審核
+  # 3. Bump staging manifest：staging 自動部署，不需人工審核
   bump-staging:
     name: Bump Staging Manifest
     needs: docker
@@ -257,9 +257,31 @@ jobs:
           git push origin HEAD:main \
             || { git pull --rebase origin main && git push origin HEAD:main; } \
             || { echo "::error::push 到 notes-deploy 失敗"; exit 1; }
-  
-  
-  # 5. Release 階段 (build/掃描/ops-handoff 全部通過後，才算版本號並發布)
+
+  # 5. Release 階段 (build/掃描/bump-production 全部通過後，才算版本號並發布)
   release:
     name: Semantic Release
-    needs: bump-production        # ← 原本是 ops-handoff
+    needs: bump-production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run semantic-release
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
