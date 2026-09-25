@@ -1,7 +1,7 @@
 # GitOps Roadmap：從「加密產物 + 人工核准」延伸到「Docker image + Argo CD + k3s」
 
-> **狀態：設計稿，Phase 0 已完成。** 本文描述如何把目前 `ci.yml` 的 5 個 job 延伸成下面這條完整的 GitOps 鏈路。
-> 所有 YAML / shell 片段都是為了讓每個 Phase 可以直接開 PR 而寫的草案，實際落地時請依當時的 action 版本與環境調整。
+> **狀態：Phase 0 ~ 9 已實作並上線**，staging 與 production 兩個 namespace 都在跑 `notes` + `notes-api` 兩個服務；Phase 10 是選配。
+> 標題有「已完成」的 Phase，裡面的 YAML / shell 就是實際 ship 的版本；其餘仍是草案，落地時請依當時的 action 版本與環境調整。
 > 執行環境已確定為 **Apple Silicon（M4 / 16GB）+ Multipass VM + k3s**，第 0 節說明這個決定帶來的限制。
 > **manifest 放在另一個 repo `liaooliver/notes-deploy`**（2026-09-19 定案，理由與推導見第 2.2 節）。
 > 互動版：[GitOps Roadmap Artifact](https://claude.ai/artifact/9EbPRiqXcJY8ZrqcJXputd)（可逐步播放的架構流程圖）
@@ -1410,24 +1410,26 @@ curl -o /dev/null -s -w '深層路由 %{http_code}\n' http://notes.local/records
 ```
 
 
-#### Phase 9：加 Express API，練多服務與 Ingress 分流
+#### Phase 9：加 Express API，練多服務與 Ingress 分流（已完成）
 
-這是第二輪真正的重點：**兩個容器怎麼在 k8s 裡找到彼此、怎麼被拼成同一個網域。**
+第二輪真正的重點：**兩個容器怎麼在 k8s 裡找到彼此、怎麼被拼成同一個網域。**
 
-從單服務變雙服務，有五個地方要同時改，漏一個就會出現 `/` 回 503 或 API 沒跟著換版。下面把完整的目標檔案樹與每一處差異列清楚。
+從單服務變雙服務，有五個地方要同時改，漏一個就會出現 `/` 正常但 `/api` 回 `no available server`。下面是實際 ship 的版本。
 
-##### 9-a. 目標檔案樹
+##### 9-a. 實際的檔案樹
 
 ```
 notes/
+├── package.json                  # workspaces: ["frontend", "api"]
+├── package-lock.json             # 全 repo 仍然只有這一份
 ├── Dockerfile                    # 前端（單層 nginx，見 Phase 8）
-├── nginx.conf
-├── package.json                  # 前端
-├── src/                          # Vue
-├── api/                          # ← 新增
-│   ├── Dockerfile                #   Express 用，單層 node:22-alpine
-│   ├── package.json
-    └── server.js                 #   fix record 的 CRUD
+├── frontend/                     # workspace 1：Vue（見 Phase 7）
+│   └── vite.config.js            #   server.proxy 把 /api 轉給本機的 Express
+└── api/                          # workspace 2 ← 新增
+    ├── Dockerfile                #   單層 node:22-alpine
+    ├── package.json              #   express
+    ├── server.js                 #   /api/health + records 的 CRUD
+    └── test/
 
 notes-deploy/                     # ← 另一個 repo
 ├── base/
@@ -1438,11 +1440,32 @@ notes-deploy/                     # ← 另一個 repo
 │   ├── api-service.yaml          # ← 新增
 │   └── ingress.yaml              # ← 改：多一條 /api 規則
 └── overlays/
-    ├── staging/kustomization.yaml     # ← 改：images 兩筆
-    └── production/kustomization.yaml  # ← 改：images 兩筆
+    ├── staging/kustomization.yaml     # ← CI 自己加第二筆 image
+    └── production/kustomization.yaml  # ← 同上
 ```
 
-資料存在記憶體或 SQLite 檔（放 `emptyDir`）。**不要接 Postgres**，理由見第 0.5 節。
+`api/` 就是第三個 workspace 而已，Phase 7 立好的結構這裡直接受益：`npm ci` 一次裝完兩個子專案，`npm test` 一次跑完兩邊的測試。
+
+**資料只放在 Express 的記憶體裡**，沒有 SQLite、沒有 volume。除了第 0.5 節「不碰資料庫」的理由之外還多一個：`better-sqlite3` 是 native module，multi-arch build 時 arm64 那份要在 QEMU 裡編譯，CI 會從幾十秒變好幾分鐘——剛好是 Phase 8 否決 multi-stage 的同一個理由。
+
+##### 9-a'. api 的 Dockerfile 有兩個非顯而易見的地方
+
+```dockerfile
+FROM node:22-alpine
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY api/package.json api/
+COPY frontend/package.json frontend/        # ← 看起來多餘，其實必要
+RUN npm ci --omit=dev --ignore-scripts --workspace notes-api
+
+COPY api/server.js api/
+EXPOSE 3000
+CMD ["node", "api/server.js"]
+```
+
+1. **build context 是 repo 根目錄，不是 `api/`。** workspaces 全 repo 只有根目錄那一份 `package-lock.json`，context 設成 `api/` 就看不到它，只能退回 `npm install`，裝到的版本不保證跟 CI 測過的一樣。`frontend/package.json` 也得一起 COPY——`npm ci` 會檢查 lockfile 跟**每一個** workspace 的 `package.json` 對不對得上，少一份就直接報錯。
+2. **`--ignore-scripts` 不能省。** 根 `package.json` 有 `"prepare": "husky"`，而 husky 是 devDependency，被 `--omit=dev` 擋掉之後那行會噴 `command not found`，`npm ci` 以 exit 127 失敗、整個 build 掛在這一層。順帶一提這也是安全上的好習慣：不讓第三方套件的 install script 在 build 時執行任意指令。
 
 ##### 9-b. 兩個新的 base 資源
 
@@ -1458,35 +1481,26 @@ spec:
   selector:
     matchLabels:
       app: notes
-      component: api        # ← 跟 web 的差別只在這個欄位
+      component: api        # ← 跟 web 的差別只有這個欄位
   template:
     metadata:
       labels:
         app: notes
         component: api
     spec:
-      # repo 是 public 時 GHCR package 也是 public，不需要 secret，這兩行先註解掉。
-      # 改成 private 時，web 與 api 兩份 Deployment 要一起取消註解（見 Phase 6）。
-      # imagePullSecrets:
-      #   - name: ghcr-pull
       containers:
         - name: api
-          image: ghcr.io/liaooliver/notes-api    # ← 另一個 image，tag 由 overlay 覆寫
+          image: ghcr.io/liaooliver/notes-api   # 另一個 image，tag 由 overlay 覆寫
           ports:
             - containerPort: 3000
           readinessProbe:
             httpGet:
-              path: /api/health                  # Express 要實作這條
+              path: /api/health                 # Express 實作的那條
               port: 3000
-          volumeMounts:
-            - name: data
-              mountPath: /data                   # SQLite 檔放這裡
           resources:
             requests: { cpu: 10m, memory: 32Mi }
             limits: { cpu: 200m, memory: 128Mi }
-      volumes:
-        - name: data
-          emptyDir: {}        # pod 重建資料就沒了——這是刻意的，見 9-e
+      # 沒有 volume：資料就在記憶體，pod 一重建就全沒了。這是刻意的，見 9-e
 ```
 
 `base/api-service.yaml`：
@@ -1507,27 +1521,11 @@ spec:
 
 > **`selector` 是最容易出錯的地方。** 如果 `web-service.yaml` 的 selector 只寫 `app: notes`（沒有 `component: web`），它會同時選到 web 跟 api 兩種 pod，流量隨機打到 3000 port 的 Express 上，症狀是「首頁有時正常有時 404」。`kubectl -n notes-staging get endpoints notes-web` 應該只列出 web 的 pod IP。
 
-`base/kustomization.yaml` 改成：
-
-```yaml
-resources:
-  - web-deployment.yaml
-  - web-service.yaml
-  - api-deployment.yaml     # ← 新增
-  - api-service.yaml        # ← 新增
-  - ingress.yaml
-```
+`base/kustomization.yaml` 的 `resources` 多 `api-deployment.yaml` 與 `api-service.yaml` 兩筆。
 
 ##### 9-c. Ingress 多一條規則
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: notes
-spec:
-  rules:
-    - host: notes.local
       http:
         paths:
           # 順序在 Traefik 不重要，它用「最長前綴優先」：
@@ -1552,92 +1550,102 @@ spec:
 
 - **不需要處理 CORS** —— 同源
 - 前端**不需要知道後端的位址** —— 沒有任何 API base URL 要注入
-- 本機開發時用 `vite.config.js` 的 `server.proxy` 模擬同樣的效果，行為一致
+- 本機開發用 `vite.config.js` 的 `server.proxy: { '/api': 'http://localhost:3000' }` 模擬同樣的效果，行為一致
 
-##### 9-d. CI 要 build 兩個 image
+前端這邊只有 `store.js` 改成打 `/api/*`，外加一件容易漏的事：**`RecordDetail` 必須自己抓那一筆**。直接貼 `/records/1` 進來時列表從來沒載過，靠共用的 store 會是空的。
 
-用 matrix 讓 `docker` job 跑兩次，兩個 build context 各自產出一個 image：
+##### 9-d. CI 用 matrix build 兩個 image
 
 ```yaml
   docker:
     name: Build & Push ${{ matrix.svc.name }}
-    needs: white-box
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: write
+    # 刻意沒有 outputs：matrix 的分身共用同一組 outputs，會互相覆蓋
     strategy:
       matrix:
         svc:
-          - { name: web, context: .,    image: notes }
-          - { name: api, context: ./api, image: notes-api }
+          - { name: web, image: notes,     dockerfile: Dockerfile }
+          - { name: api, image: notes-api, dockerfile: api/Dockerfile }
     steps:
-      # ...checkout / QEMU / buildx / login 同前，略
+      - name: Download Build Artifact
+        if: matrix.svc.name == 'web'      # api 沒有 build 步驟，不需要產物
+        uses: actions/download-artifact@v8
+        with: { name: dist-files, path: dist }
+
+      # ...QEMU / buildx / login 同前
 
       - name: Docker Metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.svc.image }}
-          tags: |
-            type=sha,prefix=sha-,format=long
-            type=ref,event=branch
 
       - name: Build and Push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
-          context: ${{ matrix.svc.context }}
+          context: .                        # ← 兩份都是根目錄，理由見 9-a'
+          file: ${{ matrix.svc.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
 ```
 
-> **matrix job 不能用 `outputs` 把 tag 傳給下游**（matrix 的 outputs 會互相覆蓋，只留最後一個）。但這裡不需要：兩個 image 的 tag 都是 `sha-${{ github.sha }}`，下游 `bump-*` job 直接自己組就好，不必從 `needs.docker.outputs` 拿。
-
-`bump-staging` / `bump-production` 的 bump 步驟改成跑兩次：
+`bump-staging` / `bump-production` 改成跑兩次 `kustomize edit set image`，而且 `IMAGE_TAG` 直接寫 `sha-${{ github.sha }}`，不再從 `needs.docker.outputs` 拿：
 
 ```yaml
-      - name: Set image tags in overlay
         env:
-          IMAGE_TAG: sha-${{ github.sha }}     # 不再從 needs.docker.outputs 拿
-        working-directory: notes-deploy/overlays/staging
+          IMAGE_TAG: sha-${{ github.sha }}
         run: |
-          kustomize edit set image \
-            "ghcr.io/liaooliver/notes=ghcr.io/liaooliver/notes:${IMAGE_TAG}"
-          kustomize edit set image \
-            "ghcr.io/liaooliver/notes-api=ghcr.io/liaooliver/notes-api:${IMAGE_TAG}"
-          git --no-pager diff
-```
-
-對應的 overlay `images:` 變成兩筆：
-
-```yaml
-images:
-  - name: ghcr.io/liaooliver/notes
-    newTag: sha-0000000000000000000000000000000000000000
-  - name: ghcr.io/liaooliver/notes-api
-    newTag: sha-0000000000000000000000000000000000000000
+          kustomize edit set image "ghcr.io/liaooliver/notes=ghcr.io/liaooliver/notes:${IMAGE_TAG}"
+          kustomize edit set image "ghcr.io/liaooliver/notes-api=ghcr.io/liaooliver/notes-api:${IMAGE_TAG}"
 ```
 
 > **兩個 image 共用同一個 SHA tag**，因為它們來自同一個 commit。這讓 rollback 很單純：revert 那個 bump commit，兩個服務一起回到同一版，不會出現「前端新、後端舊」的組合。
 >
-> GHCR 上會出現第二個 package（`notes-api`），第一次 push 後要到 Packages 頁面確認它的可見性跟 `notes` 一致，否則 Phase 6 的 pull 權限只會對一半。
+> GHCR 上會出現第二個 package（`notes-api`），**第一次 push 後一定要去 Packages 頁面把它改成 public**，否則 k3s 拉不動、pod 卡在 `ImagePullBackOff`。可以用匿名 token 驗證它真的是公開的：
+>
+> ```bash
+> T=$(curl -s "https://ghcr.io/token?scope=repository:liaooliver/notes-api:pull" | jq -r .token)
+> curl -s -H "Authorization: Bearer $T" \
+>      -H 'Accept: application/vnd.oci.image.index.v1+json' \
+>      "https://ghcr.io/v2/liaooliver/notes-api/manifests/sha-<40 碼>" | jq '.manifests[].platform'
+> ```
+>
+> 回得出 `amd64` 與 `arm64` 兩筆，就同時證明了「是 public」跟「是 multi-arch」。
 
 ##### 9-e. 三個要弄懂的概念
 
-**1. Service DNS**：同一個 namespace 內，`http://notes-api:3000` 就是一個可以直接用的網址。CoreDNS 會把 `notes-api` 解析成 Service 的 ClusterIP。跨 namespace 要寫全名 `notes-api.notes-staging.svc.cluster.local`。
+**1. Service DNS**：同一個 namespace 內，`http://notes-api:3000` 就是一個可以直接用的網址。CoreDNS 會把 `notes-api` 解析成 Service 的 ClusterIP。跨 namespace 要寫全名 `notes-api.notes-staging.svc.cluster.local`。（這個專案其實用不到——瀏覽器走 Ingress，前端不會從伺服器端呼叫後端。）
 
-**2. label / selector 是唯一的黏合劑**：Deployment 靠 `selector.matchLabels` 認自己的 pod，Service 靠 `selector` 認要導流量的 pod，Ingress 靠 Service **名稱**。這三層沒有任何自動關聯，全靠字串對上。`kubectl get endpoints` 是唯一能看出「Service 到底有沒有接到 pod」的指令。
-
-**3. `emptyDir` 的資料會消失，而且這是特性不是 bug**：
+**2. label / selector 是唯一的黏合劑**：Deployment 靠 `selector.matchLabels` 認自己的 pod，Service 靠 `selector` 認要導流量的 pod，Ingress 靠 Service **名稱**。這三層沒有任何自動關聯，全靠字串對上。`kubectl get endpoints` 是唯一能看出「Service 到底有沒有接到 pod」的指令：
 
 ```bash
-kubectl -n notes-staging delete pod -l component=api   # 砍掉讓它重建
-# 重新整理頁面 → 剛剛新增的 record 全沒了
+kubectl -n notes-staging get pods,endpoints
+# endpoints/notes-api 要有一個 IP:3000。是空的 → selector 沒對到，或 pod 還沒 ready
 ```
 
-這個現象值得停下來想清楚：容器被設計成**可拋棄**的，任何寫在容器檔案系統裡的東西都不該被信任。真實系統的資料要嘛放叢集外的託管資料庫，要嘛用 StatefulSet + PV 明確宣告持久化。**能講清楚這件事，比真的架起一套 StatefulSet Postgres 更有價值。**
+Ingress 那邊的對應症狀是 `no available server`（Traefik 說「這條路由後面沒有健康的 pod」）。
+
+**3. 資料會消失，而且這是特性不是 bug**：
+
+```bash
+curl -s -X POST http://notes-staging.local/api/records \
+     -H 'Content-Type: application/json' -d '{"date":"2026-09-25","title":"會不見的紀錄"}'
+kubectl -n notes-staging delete pod -l component=api   # 砍掉讓它重建
+curl -s http://notes-staging.local/api/records          # 剛剛那筆不見了
+```
+
+這個現象值得停下來想清楚：容器被設計成**可拋棄**的，任何寫在容器記憶體或檔案系統裡的東西都不該被信任（用 `emptyDir` 裝 SQLite 也一樣，那個 volume 跟著 pod 生死）。真實系統的資料要嘛放叢集外的託管資料庫，要嘛用 StatefulSet + PV 明確宣告持久化。**能講清楚這件事，比真的架起一套 StatefulSet Postgres 更有價值。**
+
+##### 9-f. 套用順序（踩過一次）
+
+`notes-deploy` 的結構 commit（新增 api 的 Deployment / Service）與 CI 的 bump commit（把 tag 寫進 overlay）之間有先後關係：
+
+```
+① notes 的 PR 合進 staging  → CI build 出 notes-api image，bump commit 幫 overlay 加上 tag
+② 才 push notes-deploy 的結構 commit
+```
+
+反過來的話，Argo CD 會先同步到「有 `api-deployment.yaml` 但 overlay 還沒有對應 tag」的狀態，image 變成 `ghcr.io/liaooliver/notes-api`（等於 `:latest`，GHCR 上不存在），pod 卡在 `ImagePullBackOff`。此時 `kubectl rollout restart` **沒有用**——spec 沒變，重開幾次都一樣。解法是讓 Argo 讀到後面那個 bump commit，見第 5 節「Argo CD 的 `Synced` 不代表跟 GitHub 一致」。
 
 ---
 
@@ -1733,6 +1741,11 @@ git push
 
 - **squash merge 會把 PR 裡每一個 commit 訊息串成一整條，`[skip ci]` 出現在任何一行都算數 —— 包括在文件裡「講解」這個字串的時候。** PR #27 就是這樣：merge 進 `main` 之後 GitHub **根本沒有建立 run**，不是失敗、不是被取消，是連一個可以按 re-run 的東西都沒有，Actions 頁面一片空白。所以 `ci.yml` 開頭補了一行 `workflow_dispatch:` 當逃生門，可以手動指定分支補跑。要在文件裡提到這個字串，就拆開寫或用反引號以外的方式避開。
 
+- **更陰險的版本：那個字串出現在「一般 commit message」裡，PR 會變成永遠不能 merge。** PR #33 是一個純文件 PR，commit message 裡為了描述上面那條坑，字面上寫了那五個字。結果那次 push **沒有建立任何 run**，於是 PR 上三個 required status check 一個都沒出現——`Build Application` 不是紅的，是**不存在**。branch protection 要求它通過，它永遠不會通過，`gh pr merge` 只回一句 `the base branch policy prohibits the merge`。
+  **辨識法**：PR 的 Checks 分頁一片空白、`gh pr checks` 回 `no checks reported`，而不是任何失敗訊息。
+  **解法**：`git commit --amend` 改掉訊息再 `git push --force-with-lease`，check 立刻就跑出來。`workflow_dispatch` 在這裡救不了——手動跑出來的 run 不會回填成 PR 的 required check。
+  **預防**：談論這個字串時一律拆開寫（例如 `skip-ci 標記`），commit message、PR 標題、PR 內文都算。
+
 - **`paths-ignore` 是陷阱，即使回到同 repo 方案也不要加。** 直覺上會想用 `paths-ignore: ['deploy/**']` 避免 bump commit 觸發 CI，但這會造成一個真實的死結：純 `deploy/**` 改動的 PR 不會跑 `Build Application`，**required status check 永遠停在 Pending，PR 再也 merge 不進去** —— 而第一次要 rollback 改的就只有 `deploy/**`。這條留著當紀錄：**用 path filter 去閃過一個 required status check，等於自己製造一個永遠無法滿足的條件。**
 
 - **跨 repo push 要自己處理 non-fast-forward。** `bump-staging` 與 `bump-production` 寫的是同一個 `notes-deploy` 的 `main`，兩邊時間靠近就會撞。同 repo 時代靠 branch protection 的順序保證擋掉一部分，現在沒有了，所以 push 要帶 `git pull --rebase` 重試一次，仍失敗就讓 job 紅掉（見 Phase 4）。
@@ -1752,6 +1765,14 @@ git push
 - **GHCR 免費層限制。** 個人帳號 public package 免費無限；private package 有 500 MB storage + 1 GB/月 transfer 的免費額度。每次 push 都產生新 tag，nginx:alpine 底層約 20 MB 但 layer 會共用，實際增量很小；不過長期還是要加 `actions/delete-package-versions@v5` 定期清舊 tag（保留最近 N 個 + 所有帶 `notes-v` 的）。
 
 - **k3s 在本機、沒有公網 IP 時，Argo CD 收不到 GitHub webhook。** 只能靠預設每 3 分鐘 polling（可在 `argocd-cm` 的 `timeout.reconciliation` 調短，但太短會打爆 GitHub API rate limit）。想練 webhook 要用 `cloudflared tunnel` / `ngrok` 把 `argocd-server` 的 `/api/webhook` 暴露出去，並在 repo Settings → Webhooks 設定。學習階段 polling 就夠了，3 分鐘的延遲反而讓你看得到「OutOfSync → Syncing → Synced」的狀態轉換。
+
+- **Argo CD 顯示 `Synced` 不代表「跟 GitHub 上最新的 commit 一致」。** 它的意思是「叢集 = **我所知道的那個 commit**」，而它知道的可能是三分鐘前、甚至更早的版本。`kubectl -n argocd get app notes-staging -o jsonpath='{.status.sync.status} {.status.sync.revision}'` 會同時印出狀態與它認定的 revision——**看 revision，不要看 Synced 兩個字**。要它立刻重讀 Git：
+
+  ```bash
+  kubectl -n argocd annotate app notes-staging argocd.argoproj.io/refresh=hard --overwrite
+  ```
+
+  Phase 9 上線時就是這樣：Argo 停在結構 commit、還沒看到後面那個 bump commit，`notes-api` 的 image 沒有 tag，pod 卡在 `ImagePullBackOff`。當下直覺會去 `rollout restart`，但 spec 根本沒變，重開幾次都一樣——**要動的是 Argo 的認知，不是 pod**。
 
 - **`docker` job 只在 push 跑，PR 上看不到 image build 是否會壞。** 若想 PR 階段就驗證 Dockerfile，可以在 PR 事件加一個 `push: false` 的 build-only job，或直接把 `docker` job 的 `push:` 改成 `${{ github.event_name == 'push' }}`。
 
