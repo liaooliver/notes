@@ -1754,7 +1754,20 @@ git push
 
 - **bump job 的競態：兩次 push 靠太近，舊 run 會把舊 image 寫回 manifest。** `IMAGE_TAG` 來自觸發時的 `github.sha`，但 `checkout ref: staging` 拿到的是**執行當下**的 HEAD，兩者之間可能已經隔了另一次 push。`bump-production` 尤其危險，因為它會停在人工審核等好幾小時。三道防線：workflow 層 `concurrency: deploy-${{ github.ref }}`（且 `cancel-in-progress: false`，不要砍掉已 Approve 的部署）、bump 前比對 `origin/<branch>` 是否仍等於 `GITHUB_SHA`、push 失敗要讓 job 紅掉。詳見 Phase 4。
 
+- **commitlint 的 `subject-case` 對中英混寫沒有意義，而且錯過一次就會卡住之後的 promote。** `config-conventional` 預設會擋 start-case，於是 `docs(gitops): Phase 9 改寫成...` 因為開頭那個大寫的 `Phase` 被判定失敗。中文沒有大小寫，這條規則只會對開頭那個英文單字發作。**真正麻煩的是時間差**：這顆 commit 是 squash 進 `staging` 之後才在 push 事件上被擋下來的，此時它已經在歷史裡改不掉，而下一次 promote 的 PR 會把它一起 lint —— required check 必紅，等於 `staging` 再也上不了 `main`。定案：`'subject-case': [0]`，其餘規則保留。
+
 - **bump commit 的訊息用純 ASCII。** （`notes-deploy` 不裝 commitlint，但格式維持一致才好讀。） 早期草稿寫 `chore(deploy): staging → sha-abc1234`，那個全形箭頭要賭 commitlint 的 `subject-case` / `subject-full-stop` 規則怎麼判。定案：`chore(deploy): bump staging image to sha-<40 碼>`（拆 repo 之後不再需要 `[skip ci]`）。
+
+- **matrix 的每個分身要有自己的 build cache scope。** `cache-to: type=gha,mode=max` 不指定 `scope` 時，web 與 api 兩個分身同時寫同一塊 GHA cache，互相蓋掉。症狀不是報錯，是 **`Build and Push` 那一步就卡在那裡**——2026-09-25 的 staging run 卡了 27 分鐘，而同一份 build 在其他 run 只要 91 秒。修法是 `scope=${{ matrix.svc.name }}`，`cache-from` / `cache-to` 兩邊都要加。
+
+- **一個卡住的 run 會把後面所有 run 一起堵死，而且症狀是「pending」不是「failed」。** `concurrency` 的 `cancel-in-progress: false`（為了保護等待 Approve 的部署，見 Phase 4）代表新 run 只能排隊。上面那個卡住的 build 讓後面的 run 一直停在 pending、連一個 job 都沒有，看起來像 GitHub 壞掉。**診斷法**：
+
+  ```bash
+  gh api "repos/<owner>/<repo>/actions/runs?status=in_progress" \
+    -q '.workflow_runs[] | "\(.id) \(.name) \(.head_branch)"'
+  ```
+
+  找出還占著位子的那個 run，`gh run cancel <id>` 之後隊伍就會動。
 
 - **`docker` job 用 matrix 之後不能靠 `outputs` 傳 tag。** 第二輪 build 兩個 image 時，matrix job 的 `outputs` 會互相覆蓋只留最後一個。下游改成自己組 `sha-${{ github.sha }}`，不要從 `needs.docker.outputs.image_tag` 拿（見 Phase 9-d）。
 
