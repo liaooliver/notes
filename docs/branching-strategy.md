@@ -18,9 +18,9 @@ feature/* ──PR──▶ staging ──PR/merge──▶ main
 | 分支 | 觸發的 job | 目的 |
 | --- | --- | --- |
 | PR 到 `staging` | `build`、`white-box`（Semgrep + Trivy） | 輕量把關：功能分支能不能被接受進集成分支。merge 後的 push 不再重跑 |
-| push 到 `main`（staging 的 promotion） | `build`、`white-box`、`encryption`、`ops-handoff`、`release` | 完整發布流程：只有正式要發版時才跑 |
+| push 到 `main`（staging 的 promotion） | `build`、`white-box`、`docker`、`bump-production`、`release` | 完整發布流程：只有正式要發版時才跑 |
 
-`encryption` / `ops-handoff` / `release` 這三個 job 都用 `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` 擋住，
+`bump-production`（Ops Handoff）與 `release` 這兩個 job 都用 `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` 擋住，
 確保它們只在 `staging → main` 的那次 push 觸發，不會因為功能分支進 `staging` 就跑一次。
 
 ## 日常流程
@@ -28,10 +28,34 @@ feature/* ──PR──▶ staging ──PR/merge──▶ main
 1. 從 `staging` 切功能分支（`feature/xxx`），開發完 PR 回 `staging`
 2. `staging` 上的 PR 只跑 `build`（含 `npm test`）+ `white-box`，過了就能 merge
 3. 累積到一個可以發版的節點，把 `staging` 開 PR 到 `main`
-4. `main` 上的 push 觸發完整流程：build → 掃描 → 加密 → `ops-handoff` 人工核准 → `release` 自動算版號發布
+4. `main` 上的 push 觸發完整流程：build → 掃描 → 推 multi-arch image → **人工核准** → bump production manifest → `release` 自動算版號發布
 
 `.github/workflows/llm-pr-assist.yml` 的三個 LLM job 沒有限制目標分支，所以無論 PR 開去 `staging` 還是
 `main`，都會照樣跑（commit message 建議 / PR 摘要 / code review comment）。
+
+## Promote 一定要 merge commit，不能 squash
+
+`staging → main` 那個 PR，**按 merge 時一定要選 "Create a merge commit"**。功能分支進 `staging` 用 squash 沒問題，只有 promote 這一步不行。
+
+原因是 parent。squash 產生的是一個全新的 commit，它只有一個 parent —— 舊的 `main`。git 因此完全不知道這份內容來自 `staging`：兩邊檔案一模一樣，但**沒有共同祖先**。下一次 promote，git 會拿 `staging` 的每一個 commit 重放一遍，**每個檔案都衝突**，而且內容看起來還一樣，非常難懂。
+
+PR #30 踩過這個坑。修法是在 `staging` 上補一次「只認祖先、不動內容」的合併：
+
+```bash
+git checkout staging
+git merge -s ours --no-ff origin/main -m "chore: record main's squashed history as an ancestor of staging"
+# -s ours 的意思是「留下我這邊的檔案內容，但把對方記成 parent」
+git push origin staging
+```
+
+修好之後檢查方向不要搞反：
+
+```bash
+git diff origin/main origin/staging --stat                      # 要是空的（內容一致）
+git merge-base --is-ancestor origin/staging origin/main && echo OK   # staging 是 main 的祖先
+```
+
+反過來問（`main` 是不是 `staging` 的祖先）會得到「否」，**那是正常的** —— merge commit 本來就讓 `main` 多了一個 `staging` 沒有的節點。
 
 ## Branch protection
 
