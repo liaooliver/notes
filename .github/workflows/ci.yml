@@ -159,6 +159,32 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.svc.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.svc.name }}
 
+      # 3-1. 掃「剛推上去的那顆 image」。
+      # white-box 那道 Trivy 用的是 scan-type: fs，只看得到 repo 裡的原始碼與 package-lock，
+      # 看不到 base image（nginx:1.30-alpine / node:22-alpine）那層 OS 套件——
+      # 實際會被拿來打的 CVE 很常就長在那一層，所以要在 push 之後補這一刀。
+      # 不必另外給 registry 憑證：前面 Login to GHCR 已經把帳密寫進 runner 的 docker config，Trivy 會沿用。
+      - name: Scan Pushed Image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'image'
+          # tag 規則跟下游 bump manifest 用的那組完全一致（sha-<40 碼 commit sha>）。
+          # image 名稱走 matrix 變數而不是寫死，兩個分身才會各自掃自己那顆。
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.svc.image }}:sha-${{ github.sha }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          # 只擋「上游已經有修補版本」的漏洞。沒有 patch 可用的 CVE 擋下來也修不動，
+          # 只會讓 pipeline 長期紅著，最後大家學會直接忽略紅燈——那才是真的等於沒在掃。
+          ignore-unfixed: true
+          # 掃到就熔斷整條 pipeline（跟 white-box 那道同一個立場）。
+          # 掃出 CRITICAL/HIGH 卻照樣讓 image 流進 staging/production，這一步就只是裝飾；
+          # 要讓它有意義，就得付「壞掉的版本進不去」這個代價。
+          exit-code: '1'
+          # Trivy 的漏洞資料庫是從 GHCR 拉的，偶爾會撞到 rate limit（TOOMANYREQUESTS）。
+          # 這個 input 預設就是 true，特地寫出來是當成提醒：別為了省幾十秒把它關掉，
+          # 關掉之後每次 run 都重抓 DB，遲早換來一個跟程式碼無關的假紅燈。
+          cache: 'true'
+
   # 3. Bump staging manifest：staging 自動部署，不需人工審核
   bump-staging:
     name: Bump Staging Manifest

@@ -1,7 +1,7 @@
 # GitOps Roadmap：從「加密產物 + 人工核准」延伸到「Docker image + Argo CD + k3s」
 
 > **狀態：Phase 0 ~ 9 已實作並上線**，staging 與 production 兩個 namespace 都在跑 `notes` + `notes-api` 兩個服務；Phase 10 是選配。
-> 標題有「已完成」的 Phase，裡面的 YAML / shell 就是實際 ship 的版本；其餘仍是草案，落地時請依當時的 action 版本與環境調整。
+> Phase 0 ~ 9 的標題都標了「（已完成）」，裡面的 YAML / shell 就是實際 ship 的版本；標題括號裡若補了「後來改成……」，表示那一節保留的是當時的寫法，最終版本在它指到的 Phase。只有 Phase 10（選配）還沒做。
 > 執行環境已確定為 **Apple Silicon（M4 / 16GB）+ Multipass VM + k3s**，第 0 節說明這個決定帶來的限制。
 > **manifest 放在另一個 repo `liaooliver/notes-deploy`**（2026-09-19 定案，理由與推導見第 2.2 節）。
 > 互動版：[GitOps Roadmap Artifact](https://claude.ai/artifact/9EbPRiqXcJY8ZrqcJXputd)（可逐步播放的架構流程圖）
@@ -145,7 +145,7 @@ k3s 之後要加節點只要在另一台 VM 跑一行 `K3S_URL=... K3S_TOKEN=...
 | 現有 job（`ci.yml`） | 現在做的事 | 對應目標流程 | 處置 |
 | --- | --- | --- | --- |
 | `build` | `npm ci` → `npm test` → `npm run build` → 上傳 `dist/` artifact | **test / build** | **沿用**。`build` script 原本是 placeholder（只 echo 一個 `<h1>`），Phase 0 已修成複製 `src/`。第二輪改成 Vue 之後這個 job **一行都不用改**，因為 `npm run build` 這個介面沒變（見 Phase 7）。 |
-| `white-box` | Semgrep SAST + Trivy `fs` 掃描 | **CI 安全閘** | **沿用**。之後可加一個 Trivy `image` 掃描步驟，對剛 build 好的 image 再掃一次（Phase 10）。 |
+| `white-box` | Semgrep SAST + Trivy `fs` 掃描 | **CI 安全閘** | **沿用**。掃的是 repo 裡的套件。base image 那一層由 `docker` job 裡的 Trivy `image` 掃描負責（Phase 10-a，已完成）。 |
 | `encryption` | `tar` + `openssl aes-256-cbc` 加密 `dist/`，上傳 `dist.tar.gz.enc` | 無直接對應 | **重新定位或拿掉**。在 image 世界裡，「保護交付產物」的做法是 registry 權限控管 + image 簽章（cosign），不是把 tarball 加密。建議：Phase 2 加了 `docker` job 之後把 `encryption` 移除；想保留「產物完整性」這個學習點就改成 cosign keyless 簽章（Phase 10）。 |
 | `ops-handoff` | `environment: production` 等人工核准 → `echo` 一句話 | **GitHub Environment Approval → 更新 manifest image tag** | **沿用審核機制、替換執行內容**。把 `echo` 換成 `kustomize edit set image` + commit 進 `notes-deploy`（Phase 4）。這就是「人按下 Approve」到「Argo CD 開始部署」之間唯一的橋。 |
 | `release` | `semantic-release` 算版號、打 tag、發 GitHub Release | 版本號 / Release notes | **沿用**。順序調整為在 manifest bump 之後跑，讓 image 也能順便打上 `notes-vX.Y.Z` tag（Phase 10）。 |
@@ -356,7 +356,7 @@ sequenceDiagram
 
 run #39 的 `dist-files` artifact 是 863 bytes，對得上 `index.html`（1030 B）+ `app.js`（234 B）壓縮後的大小，確認 CI 裡產出的也是真的 `src/`。
 
-#### Phase 1：`Dockerfile` + `.dockerignore`
+#### Phase 1：`Dockerfile` + `.dockerignore`（已完成；單層 COPY 的決定最後沒被推翻，見 Phase 8）
 
 `Dockerfile`：
 
@@ -396,7 +396,7 @@ docker run --rm -p 8080:80 notes:local
 # 開 http://localhost:8080 確認表單能用
 ```
 
-#### Phase 2：改 `ci.yml` 的觸發條件，加 `docker` job push multi-arch image 到 GHCR
+#### Phase 2：改 `ci.yml` 的觸發條件，加 `docker` job push multi-arch image 到 GHCR（已完成；`docker` job 後來在 Phase 9 改成 matrix 跑兩個服務）
 
 ##### 2-a. 先改觸發條件（不改這個，後面全部不會動）
 
@@ -576,7 +576,7 @@ tag 策略（由 `metadata-action` 兩條規則產生）：
 2. `docker buildx imagetools inspect ghcr.io/liaooliver/notes:staging` 列出 amd64 與 arm64 兩筆。
 3. 在 Mac 上 `docker run --rm -p 8080:80 ghcr.io/liaooliver/notes:staging` 能跑起來（Mac 是 arm64，拉到的會是 arm64 那份）。
 
-#### Phase 3：建 `notes-deploy` repo（kustomize base + overlays）
+#### Phase 3：建 `notes-deploy` repo，kustomize base + overlays（已完成；Phase 9 之後 base 多了 api 的兩份 manifest）
 
 這個 Phase 產出的東西**不在 `notes` 裡**，而是一個新的 repo（理由見第 2.2 節）。分三步。
 
@@ -765,7 +765,7 @@ kubectl kustomize overlays/production
 
 兩個都能吐出完整 YAML、image 欄位帶佔位 tag、namespace 正確，就可以 push。這個檢查之後會被 `notes-deploy` 自己的 `manifest-check` workflow 自動化（見 Phase 4 末尾）。
 
-#### Phase 4：把 `ops-handoff` 的 `echo` 換成真的 manifest bump
+#### Phase 4：把 `ops-handoff` 的 `echo` 換成真的 manifest bump（已完成；`IMAGE_TAG` 的取得方式後來在 Phase 9 改掉）
 
 拆成兩個 job：`bump-staging`（push `staging` 觸發、不需審核）跟 `bump-production`（push `main` 觸發、綁 `environment: production`）。`encryption` job 移除。
 
@@ -1058,7 +1058,7 @@ merge 一個小改動進 `staging`，等 pipeline 跑完，檢查三件事：
 
 第 2 點如果失敗（`notes` 又跑了一次），代表有人把 `notes-deploy` 的 webhook 或 workflow 設錯了，不是 `[skip ci]` 的問題——這個架構下根本沒有 `[skip ci]`。
 
-#### Phase 5：Multipass VM + k3s + Argo CD
+#### Phase 5：Multipass VM + k3s + Argo CD（已完成；production 採用 5.5 的選項 A，automated sync）
 
 這是唯一一個完全在本機、跟 GitHub 無關的 Phase。做完之後前面四個 Phase 才有東西可以部署。
 
@@ -1223,7 +1223,7 @@ spec:
 
 驗證：在 `notes-deploy` 根目錄 `kubectl apply -f argocd/`，Argo CD UI 應該看到兩個 Application 從 Missing → Progressing → Healthy/Synced；`kubectl -n notes-staging get pods` 有 notes pod Running（private repo 的前提見本節開頭的分岔）。
 
-#### Phase 6：GHCR pull 權限與對外存取
+#### Phase 6：GHCR pull 權限與對外存取（已完成；repo 是 public，所以 `imagePullSecrets` 維持註解、沒建 secret）
 
 GHCR 的 package 預設跟 repo 同可見性。`liaooliver/notes` 若是 public repo，package 也是 public，**k3s 可以直接 pull，不需要 secret** —— Phase 3 的 `web-deployment.yaml` 裡 `imagePullSecrets` 已經是註解狀態，維持註解即可。
 
@@ -1653,15 +1653,80 @@ curl -s http://notes-staging.local/api/records          # 剛剛那筆不見了
 
 #### Phase 10（選配）：進階強化
 
-**這些全部排在第一、二輪之後，而且對前端職務的投報率不高**（見第 0.3 節）。列在這裡是為了知道「還有這些東西存在」，不是待辦清單。真的要挑，順序建議：Trivy image scan（最實用）→ image 打版本 tag → Argo CD Notifications → cosign → Kyverno。
+**這些全部排在第一、二輪之後，而且對前端職務的投報率不高**（見第 0.3 節）。列在這裡是為了知道「還有這些東西存在」，不是待辦清單。真的要挑，順序建議：Trivy image scan（最實用，**已完成，見 10-a**）→ image 打版本 tag → Argo CD Notifications → cosign → Kyverno。
 
 | 項目 | 做什麼 | 補的洞 |
 | --- | --- | --- |
-| Trivy image scan | `docker` job 後加一步 `aquasecurity/trivy-action` `scan-type: image`、`image-ref: ghcr.io/...:sha-xxx` | 現在只掃 source（`fs`），沒掃 base image（nginx:alpine）裡的 CVE |
+| ~~Trivy image scan~~（已完成） | 見下面 10-a | 已補上 |
 | cosign keyless 簽章 | `docker` job 加 `permissions: id-token: write` + `sigstore/cosign-installer@v3` + `cosign sign --yes ghcr.io/...@${digest}` | 取代 `encryption` job 的「產物完整性」學習點；用 GitHub OIDC 身分簽，不用管私鑰 |
 | 驗簽 | k3s 裝 Kyverno，寫 `ClusterPolicy` `verifyImages` 要求 `ghcr.io/liaooliver/notes*` 必須有 cosign 簽章 | 沒簽章的 image 進不了 cluster，即使有人手動 `kubectl set image` |
 | Argo CD Notifications | 裝 `argocd-notifications`，設 GitHub trigger，sync 成功 / 失敗時回寫 commit status | 現在 GitHub 那邊看不到「Argo CD 到底部署完了沒」，要自己開 Argo UI 看 |
 | image 打版本 tag | `release` job 拿到 semantic-release 的 `nextRelease.version` 後 `docker buildx imagetools create -t ghcr.io/...:notes-v1.3.0 ghcr.io/...:sha-xxx` | 不重 build，只是加 tag，讓 GitHub Release 跟 image 一對一 |
+
+---
+
+##### 10-a：Trivy 掃 image（已完成）
+
+原本只有 `white-box` 那道 Trivy，掃的是 `scan-type: fs`——**讀 repo 裡的 `package-lock.json`，看我們自己裝的套件有沒有已知漏洞**。它完全看不到 base image：`nginx:1.30-alpine` 和 `node:22-alpine` 裡面那一整套 Alpine 系統套件，從來沒被檢查過。
+
+做法是在 `docker` job 把 image 推上 GHCR 之後，再掃一次剛推上去的那顆：
+
+```yaml
+      - name: Scan Pushed Image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'image'
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.svc.image }}:sha-${{ github.sha }}
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '1'
+```
+
+四個設定各自的理由：
+
+| 設定 | 為什麼 |
+| --- | --- |
+| 放在 `docker` job 裡 | 這個 job 是 matrix，兩個分身（web / api）各自跑一次、各自掃自己那顆。而且不用另外給 registry 憑證——同一個 job 前面的 `Login to GHCR` 已經把帳密寫進 runner 的 docker 設定了 |
+| `image-ref` 用 matrix 變數組出來 | tag 規則跟下游 bump manifest 用的那組一致（`sha-<40 碼>`），寫死就會有兩邊對不上的一天 |
+| `ignore-unfixed: true` | 只擋「上游已經有修補版本」的漏洞。沒有 patch 可用的 CVE 擋下來也修不動，只會讓 pipeline 長期紅著，最後大家學會忽略紅燈——那才是真的等於沒在掃 |
+| `exit-code: '1'` | 掃到就擋。掃出 CRITICAL/HIGH 卻照樣讓 image 流進叢集，這一步就只是裝飾 |
+
+**第一次開這種「會擋」的掃描，一定要先在本機預演，不然 merge 下去就是紅的。** 本機預演不用裝 Trivy，直接用它的官方 image 掃 GHCR 上已經推上去的那顆：
+
+```bash
+docker run --rm -v trivy-cache:/root/.cache/ aquasec/trivy:latest image \
+  --severity CRITICAL,HIGH --ignore-unfixed \
+  ghcr.io/liaooliver/notes-api:sha-<commit sha>
+```
+
+預演結果是**兩顆 image 都會紅**，而且兩邊紅的原因完全不同：
+
+**notes（前端）：1 個 HIGH。** `nginx:1.30-alpine` 帶的 `libexpat 2.8.4-r0` 有 CVE-2026-93990，Alpine 官方的 `2.8.5-r0` 早就修好了，只是 nginx 官方還沒重新 build image。這種「上游有修、base image 還沒跟上」的情況不用等，自己升就好：
+
+```dockerfile
+FROM nginx:1.30-alpine
+RUN apk upgrade --no-cache libexpat
+```
+
+**notes-api（後端）：8 個 HIGH，而且一個都不是我們裝的套件。** 全部來自 `node:22-alpine` 裡面附的那份 **npm 自己 bundle 的相依**（`brace-expansion`、`pacote`、`sigstore`、`ip-address`、`picomatch`）。Alpine 的系統套件層是乾淨的，髒的是 `/usr/local/lib/node_modules/npm/` 底下那一坨。
+
+這一條要特別想清楚，因為它是**最容易做出錯誤決定**的地方。當下有兩條路：
+
+| 選項 | 做法 | 結果 |
+| --- | --- | --- |
+| 把掃描調鬆 | 加 `vuln-type: 'os'`，只掃系統套件不掃 JS 套件 | pipeline 變綠，但那 8 個有漏洞的套件**還躺在 production image 裡**。等於把儀表板遮起來說「沒問題」 |
+| **把東西拿掉**（採用） | image 裡根本不需要 npm——container 啟動只跑 `node api/server.js`，npm 是 build 時才用到的 | 那些程式碼**真的離開了 image**，掃描維持全強度 |
+
+所以 `api/Dockerfile` 在 `npm ci` 之後多一行：
+
+```dockerfile
+RUN npm ci --omit=dev --ignore-scripts --workspace notes-api
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+```
+
+兩邊都改完再掃一次，`CRITICAL,HIGH` 都是 0，掃描就能維持 `exit-code: '1'`。
+
+> 這個取捨值得記住：**掃描報紅的時候，第一個念頭不該是「怎麼讓它不要紅」，而是「這東西為什麼會在 image 裡」。** production image 應該只裝得下跑起來真正需要的東西，多出來的每一樣都是白送的攻擊面。上面那個 `rm -rf npm` 之所以安全，正是因為先確認過 runtime 不會用到它。
 
 ---
 
@@ -1789,7 +1854,8 @@ git push
 
 - **`docker` job 只在 push 跑，PR 上看不到 image build 是否會壞。** 若想 PR 階段就驗證 Dockerfile，可以在 PR 事件加一個 `push: false` 的 build-only job，或直接把 `docker` job 的 `push:` 改成 `${{ github.event_name == 'push' }}`。
 
-- **Trivy 現在只掃 source，沒掃 image。** `nginx:alpine` 底層 CVE 不會被抓到。Phase 10 加 `scan-type: image` 補上，並記得 `exit-code: '1'` 一樣要開，否則掃了等於沒掃。
+- ~~**Trivy 現在只掃 source，沒掃 image。**~~ 已在 Phase 10-a 補上。留下的教訓是：**第一次啟用「掃到就擋」的 image 掃描，務必先在本機用 `aquasec/trivy` 這顆 image 預演過再 merge**，否則第一次 push 就是紅的。實際預演出來兩顆 image 都紅，修法完全不同——前端是 base image 的 `libexpat` 落後 Alpine 上游，`RUN apk upgrade --no-cache libexpat` 自己升掉；後端 8 個 HIGH 全部來自 `node:22-alpine` 內附的 npm 自己 bundle 的相依，**跟我們裝的套件無關**。
+- **掃描報紅時，別急著把掃描調鬆。** 後端那 8 個 HIGH 只要加 `vuln-type: 'os'` 就會消失，但有漏洞的程式碼還躺在 image 裡。正解是 `rm -rf /usr/local/lib/node_modules/npm`——runtime 只跑 `node api/server.js`，本來就不需要 npm。**production image 裡多出來的每一樣東西都是白送的攻擊面**，這是整個 Phase 10 最值得帶走的一句。
 
 - **`readinessProbe` 一定要有。** 沒有的話 rolling update 會在新 pod 還沒真的能服務時就砍舊 pod，Argo CD 顯示 Healthy 但實際上有幾秒 502。上面的 Deployment 範例已經放了。
 
