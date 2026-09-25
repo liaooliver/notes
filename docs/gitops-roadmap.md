@@ -1821,6 +1821,9 @@ git push
 
 - **commitlint 的 `subject-case` 對中英混寫沒有意義，而且錯過一次就會卡住之後的 promote。** `config-conventional` 預設會擋 start-case，於是 `docs(gitops): Phase 9 改寫成...` 因為開頭那個大寫的 `Phase` 被判定失敗。中文沒有大小寫，這條規則只會對開頭那個英文單字發作。**真正麻煩的是時間差**：這顆 commit 是 squash 進 `staging` 之後才在 push 事件上被擋下來的，此時它已經在歷史裡改不掉，而下一次 promote 的 PR 會把它一起 lint —— required check 必紅，等於 `staging` 再也上不了 `main`。定案：`'subject-case': [0]`，其餘規則保留。
 
+- **同一個陷阱踩第二次：`body-max-line-length`。** squash merge 的 commit body 是 GitHub 幫你把 PR 說明串成的**一整行**，不會自己折行；中文又沒有空白可以斷句，一段正常長度的說明輕鬆超過 100 字元。run 36164538568 就是這樣紅的。**修法不是把規則關掉，是降成 warning**（`[1, 'always', 100]`，action 預設 `failOnWarnings: false`）：提醒還在，但不會把自己鎖在門外。
+  > 這兩次的共同結構值得記起來：**commitlint 是在 push 事件上跑的，而那時 commit 已經進歷史了。** 任何「合併之後才會被檢查到」的規則，一旦沒過就沒有退路——因為下一次 promote 的 PR 會把整段歷史重新 lint 一遍。所以會卡住的規則要嘛在本機 husky 那一關就擋下來，要嘛就別設成 error。
+
 - **bump commit 的訊息用純 ASCII。** （`notes-deploy` 不裝 commitlint，但格式維持一致才好讀。） 早期草稿寫 `chore(deploy): staging → sha-abc1234`，那個全形箭頭要賭 commitlint 的 `subject-case` / `subject-full-stop` 規則怎麼判。定案：`chore(deploy): bump staging image to sha-<40 碼>`（拆 repo 之後不再需要 `[skip ci]`）。
 
 - **matrix 的每個分身要有自己的 build cache scope。** `cache-to: type=gha,mode=max` 不指定 `scope` 時，web 與 api 兩個分身同時寫同一塊 GHA cache，互相蓋掉。症狀不是報錯，是 **`Build and Push` 那一步就卡在那裡**——2026-09-25 的 staging run 卡了 27 分鐘，而同一份 build 在其他 run 只要 91 秒。修法是 `scope=${{ matrix.svc.name }}`，`cache-from` / `cache-to` 兩邊都要加。
