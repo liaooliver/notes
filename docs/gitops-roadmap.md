@@ -362,7 +362,7 @@ run #39 的 `dist-files` artifact 是 863 bytes，對得上 `index.html`（1030 
 
 ```dockerfile
 # 純靜態站，不需要 Node runtime，直接用 nginx 出 dist/
-FROM nginx:1.27-alpine
+FROM nginx:1.30-alpine
 
 # 把 build 好的靜態檔放到 nginx 預設 docroot
 COPY dist/ /usr/share/nginx/html/
@@ -385,7 +385,7 @@ docs
 
 > 這個決定在第二輪會被推翻（Phase 8）。現在的靜態檔沒有 build 步驟、沒有相依套件，單層 `COPY` 是對的；換成 Vue 之後 `docker build` 需要能獨立重現，才會改成 multi-stage。**第一輪的重點是把鏈路跑通，不是把 Dockerfile 寫到最終型態。**
 
-`nginx:1.27-alpine` 本身就是 multi-arch image（官方同時發 amd64 與 arm64），所以這份 Dockerfile 不用改就能同時 build 出兩種架構，要做的事全在 Phase 2 的 CI 設定裡。
+`nginx:1.30-alpine` 本身就是 multi-arch image（官方同時發 amd64 與 arm64），所以這份 Dockerfile 不用改就能同時 build 出兩種架構，要做的事全在 Phase 2 的 CI 設定裡。
 
 本機驗證：
 
@@ -447,7 +447,7 @@ on:
 
 1. 多兩步 `setup-qemu-action` + `setup-buildx-action`（第 0.1 節的架構限制）
 2. `build-push-action` 指定 `platforms: linux/amd64,linux/arm64`
-3. `actions/*` 全部用 v5（v4 綁 Node 20，已被 GitHub 標記淘汰，見 [`release-automation.md`](./release-automation.md) 的「已知的坑」）
+3. `actions/*` 用當時的最新大版本（實作時是 v7；v4 綁 Node 20，已被 GitHub 標記淘汰，見 [`release-automation.md`](./release-automation.md) 的「已知的坑」）
 4. image tag 用**完整 40 碼 SHA**，不是 7 碼縮寫（理由見下方「為什麼不用短 SHA」）
 
 ```yaml
@@ -498,7 +498,7 @@ on:
 
       - name: Docker Metadata (tags & labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -844,7 +844,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: staging
-          fetch-depth: 0
+          fetch-depth: 1   # 只比對一個 SHA，不用整段歷史
 
       - name: Abort if branch has moved on
         run: |
@@ -900,7 +900,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: main
-          fetch-depth: 0
+          fetch-depth: 1   # 同上；下面 checkout notes-deploy 才需要 depth 0（要 rebase）
 
       # 這一步在 production 特別重要：Approve 可能等了好幾小時
       - name: Abort if branch has moved on
@@ -1309,28 +1309,46 @@ Chrome
 
 | Phase | 改到 `notes-deploy` 嗎 |
 | --- | --- |
-| **7**（Vue 化）、**8**（multi-stage + nginx.conf） | **完全不用改。** image 的內容物換了，但它仍然是「一個聽 80 port 的 web 服務」，k8s 只認 image tag |
+| **7**（Vue 化）、**8**（nginx.conf + SPA fallback） | **完全不用改。** image 的內容物換了，但它仍然是「一個聽 80 port 的 web 服務」，k8s 只認 image tag |
 | **9**（加 Express） | **要改**，因為多了一個服務：base 多兩個檔、Ingress 多一條規則、overlay 的 `images:` 變兩筆 |
 
 Phase 7、8 是這一輪最值得體會的部分 —— **把應用程式從靜態頁整個換成 Vue，部署設定一行都不用動。** Phase 9 要改，是因為叢集裡真的多了一個東西，那是實質變更而不是重工。
 
-#### Phase 7：把 `src/` 換成 Vue 3 + Vite
+#### Phase 7：把 `src/` 換成 Vue 3 + Vite（已完成）
 
-```bash
-npm create vite@latest frontend -- --template vue
-# 把現有 src/index.html + src/app.js 的 fix record 表單改寫成 Vue component
-# 至少要有兩個路由，才會製造出 history 模式的情境
-npm i vue-router
+> **實作與草稿不同，以下是真正做出來的版本。** 原草稿是 `npm create vite@latest frontend`、檔案散在 repo 根目錄；實作時改成 npm workspaces。
+
+```
+notes/
+├── package.json          # workspaces: ["frontend"]
+├── package-lock.json     # 全 repo 只有這一份
+├── Dockerfile
+└── frontend/             # 一個 workspace
+    ├── package.json      # vue / vue-router / vite / vitest
+    ├── index.html        # Vite 的 build 入口是 HTML，不是 JS
+    ├── vite.config.js
+    ├── nginx.conf
+    ├── src/{App.vue,main.js,router.js,store.js,views/}
+    └── test/
 ```
 
-Router 一定要用 **history 模式**（不是 hash 模式），Phase 8 的 SPA fallback 才有意義：
+**為什麼用 workspaces：** Phase 9 還要再加一個 `api/`，兩個子專案各有自己的相依，但整個 repo 只有一份 `package-lock.json` —— CI 的 `npm ci` 才能一次裝完、`cache: 'npm'` 才有東西可以快取。先立好這個結構，Phase 9 就只是多一個目錄而已。
+
+根 `package.json` 只負責把指令轉發下去，**CI 的介面完全沒變**：
+
+```json
+"test":  "npm run test --workspaces --if-present",
+"build": "npm run build --workspace frontend"
+```
+
+`frontend/package.json` 裡是 `"test": "vitest run"` —— **`run` 不能省**。`vitest` 不帶參數是 watch 模式，在 CI 上會掛住直到 job 逾時。
+
+Router 用 history 模式（不是 hash 模式），Phase 8 的 SPA fallback 才有意義：
 
 ```js
-// src/router.js
-import { createRouter, createWebHistory } from 'vue-router'
-
-export default createRouter({
-  history: createWebHistory(),      // ← 用 createWebHashHistory 就碰不到 404 問題了
+// frontend/src/router.js
+createRouter({
+  history: createWebHistory(),   // 用 createWebHashHistory 就碰不到 404，也就學不到 SPA fallback
   routes: [
     { path: '/', component: () => import('./views/RecordList.vue') },
     { path: '/records/:id', component: () => import('./views/RecordDetail.vue') },
@@ -1338,98 +1356,59 @@ export default createRouter({
 })
 ```
 
-`package.json` 的 `build` script 從 Phase 0 的 `cp` 改成：
+**CI 的 `build` job 只改了一個字串**：`upload-artifact` 的 `path` 從 `dist/` 變成 `frontend/dist/`。`npm ci` / `npm test` / `npm run build` 三個指令一字未動。**這就是把「怎麼 build」封裝在 `npm run build` 後面的價值** —— 內容物從兩個手抄的檔案整個換成 Vue，pipeline 的介面沒感覺。
 
-```json
-"build": "vite build"
-```
+#### Phase 8：nginx SPA fallback（已完成；multi-stage 評估後否決）
 
-**CI 的 `build` job 一行都不用改。** 它跑的是 `npm ci` → `npm test` → `npm run build` → 上傳 `dist/`，這個介面沒變，只是 `dist/` 裡面從兩個手抄的檔案變成 Vite 產出的 `index.html` + `assets/*.js` + `assets/*.css`。**這就是把「怎麼 build」封裝在 `npm run build` 後面的價值。**
-
-要跟著改的是既有測試：現在 `test/` 測的是 `src/app.js` 的 `module.exports`，改成 Vue component 之後那個匯出不存在了。用 Vitest + `@vue/test-utils` 重寫，`npm test` 這個指令名稱維持不變（CI 才不用改）。
-
-驗證：
-
-```bash
-npm run build && npx vite preview
-# 開 http://localhost:4173，點進 /records/1，然後按 F5 重整
-# preview server 有內建 SPA fallback，所以這裡不會 404 —— Phase 8 才會遇到
-```
-
-#### Phase 8：Dockerfile 改 multi-stage + nginx SPA fallback
-
-第一輪的單層 Dockerfile 在這裡要被推翻。原因：Vue 有真的 build 步驟跟相依套件，`docker build -t notes:local .` 應該要能獨立重現，不能依賴「你要先在外面跑過 `npm run build`」。
+原草稿要在這裡把 Dockerfile 改成 multi-stage（node 編譯層 + nginx 執行層）。**實作時否決了，Dockerfile 維持單層：**
 
 ```dockerfile
-# ---- 第一層：編譯 ----
-# --platform=$BUILDPLATFORM 是這份 Dockerfile 最重要的一個參數，理由見下
-FROM --platform=$BUILDPLATFORM node:22-alpine AS build
-WORKDIR /app
-
-# 先只複製 lock file 再 npm ci：相依沒變時這層會命中快取，不用重裝
-COPY package.json package-lock.json ./
-RUN npm ci
-
-COPY . .
-RUN npm run build          # 產出 /app/dist
-
-# ---- 第二層：只拿成果 ----
-FROM nginx:1.27-alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+FROM nginx:1.30-alpine
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY dist/ /usr/share/nginx/html/
 ```
 
-**`--platform=$BUILDPLATFORM` 解決了 Phase 2 留下的伏筆。** `BUILDPLATFORM` 是 buildx 內建變數，值是「執行 build 的那台機器的架構」（GitHub runner = amd64）。加了它，編譯層永遠原生跑在 amd64，不會被 QEMU 模擬：
+**否決的理由是 multi-arch。** multi-stage 會把 `npm ci` + `vite build` 搬進 image build，arm64 那一份就得在 QEMU 底下跑 Node，CI 從約 1 分鐘變成約 8 分鐘。草稿提的解法是 `FROM --platform=$BUILDPLATFORM`（把編譯層釘在 runner 的架構上），那確實有效，但它換來的好處 —— 「`docker build` 能獨立重現」—— 在這個專案用不到：`build` job 上傳的 artifact 已經保證「進 image 的東西 = 通過測試的東西」，而且那是更強的保證。
 
-| 寫法 | amd64 那份 | arm64 那份 | 總時間 |
-| --- | --- | --- | --- |
-| 不加 `--platform` | 原生跑 `npm ci` + build | **QEMU 模擬跑 Node**，慢 5–10 倍 | 數分鐘 |
-| 加 `--platform=$BUILDPLATFORM` | 原生 | **重用同一份編譯結果**，只有最後 `COPY` 分兩份 | 跟單架構差不多 |
-
-靜態檔沒有架構之分，所以兩份 image 共用同一份 `dist/` 完全正確。
+**這個取捨的代價要記住：** 現在 `docker build -t notes:local .` 在本機直接跑**會失敗**，因為 repo 裡沒有 `dist/`（`.gitignore` 掉了）。本機要驗的話得先 `npm run build && cp -r frontend/dist dist`。CI 不會踩到，因為 `docker` job 前面就有 `download-artifact` 把 `dist/` 放好。
 
 ##### `nginx.conf`：那個一定要有的 `try_files`
 
 ```nginx
 server {
-  listen 80;
-  root /usr/share/nginx/html;
-  index index.html;
+    listen 80;
+    root /usr/share/nginx/html;
 
-  # Vite 產出的 assets 檔名帶 hash，內容永遠不變 → 可以長快取
-  location /assets/ {
-    expires 1y;
-    add_header Cache-Control "public, immutable";
-  }
+    # 檔名帶 hash，內容永遠不會變 → 放心快取一年
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
 
-  # index.html 絕對不能快取。換版之後舊的 HTML 會去要已經不存在的
-  # assets/index-<舊hash>.js，使用者看到白畫面，而且重整也救不回來
-  location = /index.html {
-    add_header Cache-Control "no-cache";
-  }
+    # 這份寫死了 assets 的 hash 檔名，換版後必須立刻拿到新的
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
 
-  # SPA fallback：檔案找不到就回 index.html，交給 Vue Router 處理
-  location / {
-    try_files $uri $uri/ /index.html;
-  }
+    # 關鍵：找不到實體檔案就回 index.html，路由交給 vue-router
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
 }
 ```
 
-**為什麼非要這行不可：** Vue Router 活在瀏覽器裡，只有 `index.html` + JS 載入之後才存在。使用者直接輸入 `notes.local/records/42`（或在那頁按 F5），這個請求會一路走到 nginx，nginx 去檔案系統找 `/usr/share/nginx/html/records/42` → 不存在 → **回 404，Vue Router 從頭到尾沒機會發言**。`try_files` 就是告訴 nginx「找不到就給 index.html」，讓 JS 載入後再由 Router 決定要顯示什麼。
+**為什麼非要 `try_files` 不可：** Vue Router 活在瀏覽器裡，只有 `index.html` + JS 載入之後才存在。使用者直接輸入 `notes.local/records/42`（或在那頁按 F5），這個請求會一路走到 nginx，nginx 去檔案系統找 `/usr/share/nginx/html/records/42` → 不存在 → **回 404，Vue Router 從頭到尾沒機會發言**。`try_files` 就是告訴 nginx「找不到就給 index.html」，讓 JS 載入後再由 Router 決定顯示什麼。
 
-驗證（這一步就是要親眼看到 404 再看到它被修好）：
+**快取那兩段不要用 `expires`。** `expires 1y;` 加上 `add_header Cache-Control "public, immutable";` 會送出**兩個** `Cache-Control` header（`expires` 自己會生一個），瀏覽器行為就看它挑哪個。只用一個 `add_header` 把 `max-age` 寫進去，語意才唯一。
+
+驗證（第一輪的 production 就是這樣驗的）：
 
 ```bash
-docker build -t notes:local .
-docker run --rm -p 8080:80 notes:local
-
-# 先把 nginx.conf 的 try_files 那行註解掉重 build，開 http://localhost:8080/records/1
-#   → 404 Not Found
-# 加回來再 build，同一個網址
-#   → 正常顯示
+curl -o /dev/null -s -w '首頁 %{http_code}\n'     http://notes.local/
+curl -o /dev/null -s -w '深層路由 %{http_code}\n' http://notes.local/records/1
+# 兩個都要 200。第二個是重點 —— 那個路徑在 image 裡沒有對應的檔案，
+# 回 200 就證明 try_files 生效了。少了它會是 404。
 ```
 
-`docker` job 那邊，`Download Build Artifact` 這一步可以拿掉了（Dockerfile 自己會 build）。`build` job 保留不動 —— 它的價值從「產出 artifact」變成「跑 `npm test` 當品質閘」，那才是 `needs: build` 真正在把關的東西。
 
 #### Phase 9：加 Express API，練多服務與 Ingress 分流
 
@@ -1441,7 +1420,7 @@ docker run --rm -p 8080:80 notes:local
 
 ```
 notes/
-├── Dockerfile                    # 前端（Phase 8 的 multi-stage）
+├── Dockerfile                    # 前端（單層 nginx，見 Phase 8）
 ├── nginx.conf
 ├── package.json                  # 前端
 ├── src/                          # Vue
@@ -1598,7 +1577,7 @@ spec:
 
       - name: Docker Metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.svc.image }}
           tags: |
@@ -1738,7 +1717,7 @@ git push
 
 - **CPU 架構不一致是這份 roadmap 的頭號地雷。** GitHub runner 是 amd64、Apple Silicon 的 VM 是 arm64。沒做 multi-arch 的話，前面四個 Phase 都會綠燈，一路到 Phase 5 把 image 拉進 k3s 才爆 `no matching manifest for linux/arm64` 或 `exec format error`，而且錯誤訊息完全不提架構兩個字。**Phase 2 就要一次做對**，不要想著「先跑通再說」。
 
-- **第二輪把 build 搬進 Dockerfile 之後，multi-arch 會突然變很慢。** arm64 那一份會在 QEMU 底下跑 Node，`npm ci` + `vite build` 慢 5–10 倍。解法是編譯層加 `FROM --platform=$BUILDPLATFORM`（見 Phase 8），讓它永遠原生跑在 runner 的架構上，只有最後的 `COPY` 分兩份。這個參數不加，CI 時間會從 1 分鐘變成 8 分鐘。
+- **把 build 搬進 Dockerfile（multi-stage）會讓 multi-arch 突然變很慢 —— 所以我們沒有搬。** arm64 那一份會在 QEMU 底下跑 Node，`npm ci` + `vite build` 慢 5–10 倍，CI 從 1 分鐘變成 8 分鐘。真要 multi-stage，編譯層一定要加 `FROM --platform=$BUILDPLATFORM` 把它釘在 runner 的架構上。本專案的定案是**不做 multi-stage**，繼續用 `build` job 的 artifact（理由與代價見 Phase 8）。
 
 - **kubeconfig 裡的 `server:` 是 `127.0.0.1`。** 從 VM 撈出來直接用，Mac 上的 kubectl 會去連自己的 6443 然後逾時。一定要 `sed` 成 VM 的 IP（見 Phase 5.3）。
 
@@ -1751,6 +1730,8 @@ git push
 - **CI 不可能 push 進受保護分支，而且「換一把 token」救不了——這是拆出 `notes-deploy` 的原因。** run #32 的 GH006 同時列出兩條規則：「必須透過 PR」與「3 個 required status check」。前者在 classic branch protection 底下能用 bypass 名單解掉，**後者不能**——classic 沒有針對特定身分的 status check 豁免，唯一開關是「Include administrators」，而 `github-actions[bot]` 不可能是 admin。bump commit 又不會觸發任何 check，所以第二條必然成立，**改用 GitHub App token 或 PAT 一樣失敗**。4-a 已盤點確認 `main` / `staging` 都是 classic。辨識法：被擋時 `GH006` = classic、`GH013` = ruleset。最終解法不是突破而是繞開：manifest 搬到不受保護的 `notes-deploy`（第 2.2 節）。
 
 - **拆了 repo 之後，`[skip ci]` 和 `paths-ignore` 都不需要了——但要知道當初為什麼會想用它們。** 同 repo 方案下，CI 改完 manifest 再 push 會觸發自己，得靠 `[skip ci]` 或 `GITHUB_TOKEN` 不觸發 workflow 的特性擋掉。**跨 repo 之後這個迴圈從根上不存在**：`notes` 的 workflow 不會因為 `notes-deploy` 的 commit 而觸發。所以現在的 bump commit 訊息裡沒有 `[skip ci]`，這是刻意的，不是漏寫。
+
+- **squash merge 會把 PR 裡每一個 commit 訊息串成一整條，`[skip ci]` 出現在任何一行都算數 —— 包括在文件裡「講解」這個字串的時候。** PR #27 就是這樣：merge 進 `main` 之後 GitHub **根本沒有建立 run**，不是失敗、不是被取消，是連一個可以按 re-run 的東西都沒有，Actions 頁面一片空白。所以 `ci.yml` 開頭補了一行 `workflow_dispatch:` 當逃生門，可以手動指定分支補跑。要在文件裡提到這個字串，就拆開寫或用反引號以外的方式避開。
 
 - **`paths-ignore` 是陷阱，即使回到同 repo 方案也不要加。** 直覺上會想用 `paths-ignore: ['deploy/**']` 避免 bump commit 觸發 CI，但這會造成一個真實的死結：純 `deploy/**` 改動的 PR 不會跑 `Build Application`，**required status check 永遠停在 Pending，PR 再也 merge 不進去** —— 而第一次要 rollback 改的就只有 `deploy/**`。這條留著當紀錄：**用 path filter 去閃過一個 required status check，等於自己製造一個永遠無法滿足的條件。**
 
@@ -1791,6 +1772,10 @@ git push
 - **`emptyDir` 的資料在 pod 重建時會消失**，這是容器的設計而不是故障。第二輪刻意用它來體會「為什麼容器要無狀態」。真要持久化就得進 StatefulSet + PV 的世界，那超出這份 roadmap 的範圍（見第 0.5 節）。
 
 ### 其他
+
+- **`staging → main` 的 promote PR 一定要用 merge commit，絕對不能 squash。** squash 出來的 commit 只有一個 parent（舊的 `main`），git 因此不知道它「來自」`staging` —— 兩邊內容一模一樣，但**沒有共同祖先**。下一次 promote 時 git 會把 `staging` 的每一個 commit 重放一遍，**每個檔案都衝突**。PR #30 踩過，修法是在 `staging` 上做一次 `git merge -s ours --no-ff origin/main`（只補上缺的 parent，一個檔案都不動）再合一次。
+
+  修好之後有個會嚇到人的現象：`git merge-base --is-ancestor origin/main origin/staging` 回答「否」。**這是正常的** —— merge commit 讓 `main` 多了一個 `staging` 沒有的節點。要檢查的是反方向（`staging` 是不是 `main` 的祖先）加上 `git diff origin/main origin/staging --stat` 為空。
 
 - **不要用分支來分環境。** 早期草稿讓 staging Application 追 `staging` 分支、production 追 `main`，看起來很對稱。拆出 `notes-deploy` 之後改成**兩個 Application 都追 `main`，只差 `path`**（`overlays/staging` vs `overlays/production`）。這是 Argo CD 建議的做法：用分支分環境會讓「把 staging 驗過的設定帶到 production」變成一次 merge，而 merge 會夾帶你不想帶的東西；用目錄就只是各自改各自的 `kustomization.yaml`。另外注意 `notes-deploy` 的 `main` 跟 `notes` 的 `main` 是兩個不同 repo 的分支，同名但無關。
 
