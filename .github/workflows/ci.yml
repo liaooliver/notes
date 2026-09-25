@@ -83,30 +83,34 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '1' # 抓到高風險 CVE 立即熔斷 Pipeline
 
-  # 3. Docker 階段：把通過測試 + 掃描的 dist/ 打包成 multi-arch image 推到 GHCR
+  # 3. Docker 階段：把通過測試 + 掃描的程式碼打包成 multi-arch image 推到 GHCR
+  #
+  # 一個 repo 兩個服務（前端 notes、後端 notes-api），用 matrix 讓這個 job 跑兩次。
+  # 兩次的差別只有「用哪份 Dockerfile」「推到哪個 image 名稱」，其餘步驟完全共用。
   docker:
-    name: Build & Push Image
+    name: Build & Push ${{ matrix.svc.name }}
     needs: white-box
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     permissions:
       contents: read
       packages: write
-    outputs:
-      image_tag: ${{ steps.sha.outputs.tag }}
-      image_digest: ${{ steps.push.outputs.digest }}
+    # 這裡刻意沒有 outputs：matrix 開出來的兩個分身共用同一組 outputs，會互相覆蓋只留最後一個。
+    # 下游要 tag 自己組 sha-<commit> 就好，兩個 image 本來就來自同一個 commit。
+    strategy:
+      matrix:
+        svc:
+          - { name: web, image: notes,     dockerfile: Dockerfile }
+          - { name: api, image: notes-api, dockerfile: api/Dockerfile }
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
 
-      # 自己算 tag，不要拿 metadata-action 的 version 輸出：
-      # 那個輸出會依 tag 優先序回傳 "staging" / "main"，manifest 需要的是唯一的 sha tag。
-      - name: Compute Image Tag
-        id: sha
-        run: echo "tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
-
-      # 用 build job 的產物，不重新 build——確保「進 image 的東西」=「通過測試的東西」
+      # 只有前端需要：用 build job 的產物，不重新 build
+      # ——確保「進 image 的東西」=「通過測試的東西」。
+      # api 沒有 build 步驟，原始碼直接進 image，所以跳過這一步。
       - name: Download Build Artifact
+        if: matrix.svc.name == 'web'
         uses: actions/download-artifact@v8
         with:
           name: dist-files
@@ -132,16 +136,19 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.svc.image }}
           tags: |
             type=sha,prefix=sha-,format=long
             type=ref,event=branch
 
+      # 兩份 Dockerfile 的 context 都是 repo 根目錄：
+      # api 那份要讀得到根目錄的 package-lock.json 才能 npm ci（見 api/Dockerfile 的註解）。
       - name: Build and Push
         id: push
         uses: docker/build-push-action@v7
         with:
           context: .
+          file: ${{ matrix.svc.dockerfile }}
           platforms: linux/amd64,linux/arm64   # ← 關鍵的一行
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -184,17 +191,20 @@ jobs:
           path: notes-deploy
           fetch-depth: 0
 
-      - name: Set image tag in overlays/staging
+      - name: Set image tags in overlays/staging
         env:
-          IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+          # 不從 needs.docker.outputs 拿——matrix job 沒有可靠的 outputs。
+          # 兩個 image 都是從這個 commit build 出來的，tag 必然相同。
+          IMAGE_TAG: sha-${{ github.sha }}
         working-directory: notes-deploy/overlays/staging
         run: |
           kustomize edit set image "ghcr.io/liaooliver/notes=ghcr.io/liaooliver/notes:${IMAGE_TAG}"
+          kustomize edit set image "ghcr.io/liaooliver/notes-api=ghcr.io/liaooliver/notes-api:${IMAGE_TAG}"
           git --no-pager diff
 
       - name: Commit and Push
         env:
-          IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+          IMAGE_TAG: sha-${{ github.sha }}
         working-directory: notes-deploy
         run: |
           git config user.name  "github-actions[bot]"
@@ -242,17 +252,20 @@ jobs:
           path: notes-deploy
           fetch-depth: 0
 
-      - name: Set image tag in overlays/production
+      - name: Set image tags in overlays/production
         env:
-          IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+          # 不從 needs.docker.outputs 拿——matrix job 沒有可靠的 outputs。
+          # 兩個 image 都是從這個 commit build 出來的，tag 必然相同。
+          IMAGE_TAG: sha-${{ github.sha }}
         working-directory: notes-deploy/overlays/production
         run: |
           kustomize edit set image "ghcr.io/liaooliver/notes=ghcr.io/liaooliver/notes:${IMAGE_TAG}"
+          kustomize edit set image "ghcr.io/liaooliver/notes-api=ghcr.io/liaooliver/notes-api:${IMAGE_TAG}"
           git --no-pager diff
 
       - name: Commit and Push
         env:
-          IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+          IMAGE_TAG: sha-${{ github.sha }}
         working-directory: notes-deploy
         run: |
           git config user.name  "github-actions[bot]"
