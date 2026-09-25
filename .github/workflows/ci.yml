@@ -1,6 +1,12 @@
 name: Enterprise CI/CD Pipeline
 
 on:
+  # 手動觸發的逃生門。squash merge 會把所有 commit 訊息串成一條，
+  # 只要其中任何一行出現 [skip ci]（即使只是在文件裡講解這個字串），
+  # GitHub 就不會建立 run —— 不是失敗，是根本沒產生，沒東西可以 re-run。
+  # PR #27 合進 main 時就踩到了。有這一行才能手動補跑。
+  workflow_dispatch:
+
   # push 監聽 staging 是 GitOps 的必要條件：image 必須從「合併後」的程式碼
   # build 出來，所以 staging 一定要有 push 事件。這等於把 PR #14
   # (ci: skip pipeline re-run on push to staging) 的決定改回來——
