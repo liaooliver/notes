@@ -153,8 +153,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # scope 一定要分開。不指定的話 web 與 api 兩個分身會同時寫同一塊
+          # GHA cache，互相蓋掉，下一次讀到壞掉的 cache manifest 就可能卡住
+          # （2026-09-25 的 staging run 在這步掛了 27 分鐘，同樣的 build 平常 91 秒）。
+          cache-from: type=gha,scope=${{ matrix.svc.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.svc.name }}
 
   # 3. Bump staging manifest：staging 自動部署，不需人工審核
   bump-staging:
