@@ -1,6 +1,8 @@
-# 目前的 Dockerfile 只 COPY dist/，BuildKit 會自動只傳那個路徑，
-# 所以這個檔現在不影響任何事。它是為 Phase 8 準備的——那時 multi-stage
-# build 會改成 COPY . .，整個 repo 都會進 build context。
+# 這個檔是有作用的，作用對象是 api/Dockerfile：它的 build context 是 repo 根目錄
+# （npm workspaces 全 repo 只有根目錄那一份 package-lock.json），所以整個 repo
+# 都會被打包送進 builder——這裡列的 docs / test / .git 就是擋在那一步。
+# 根目錄的 Dockerfile 只 COPY dist/，BuildKit 自己就只會傳那個路徑，不受這個檔影響。
+# （Phase 8 原本預計把前端改成 multi-stage 的 COPY . .，評估後否決，見 roadmap Phase 8。）
 node_modules
 .git
 .github
