@@ -20,6 +20,14 @@ COPY frontend/package.json frontend/
 #                   不讓第三方套件的 install script 在 build 時執行任意指令。
 RUN npm ci --omit=dev --ignore-scripts --workspace notes-api
 
+# 裝完相依之後就把 npm 本身從 image 裡拿掉。
+# 原因不是省空間，是 CVE：node:22-alpine 附的那份 npm 自己 bundle 了一堆套件
+# （brace-expansion / pacote / sigstore / ip-address / picomatch），Trivy 掃 image 時
+# 會報出 8 個 HIGH。那些套件我們一行都沒用到——container 啟動只跑 `node api/server.js`，
+# 但它們躺在 image 裡就是會被掃到，而且修不動（要等 Node 官方換新的 npm 進 base image）。
+# 刪掉是真的把那些程式碼移出 production image，而不是把掃描結果調鬆當作沒看到。
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 COPY api/server.js api/
 
 EXPOSE 3000
