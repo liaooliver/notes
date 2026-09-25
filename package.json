@@ -3,7 +3,7 @@
   "version": "1.2.1",
   "description": "個人筆記存放區。",
   "main": "index.js",
-  "workspaces": ["frontend"],
+  "workspaces": ["frontend", "api"],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspace frontend",
