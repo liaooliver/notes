@@ -1086,7 +1086,7 @@ curl -sfL https://get.k3s.io | sh -
 
 sudo k3s kubectl get nodes
 # NAME   STATUS   ROLES                  AGE   VERSION
-# k3s    Ready    control-plane,master   30s   v1.31.x+k3s1
+# k3s    Ready    control-plane,master   30s   v1.36.4+k3s1
 ```
 
 安裝腳本會自己偵測 arm64 並抓對應的二進位檔，不用特別指定。k3s 內建 Traefik（Ingress controller）、CoreDNS、local-path storage 跟一個叫 klipper-lb 的輕量 LoadBalancer，所以 Ingress 不需要另外裝東西。
