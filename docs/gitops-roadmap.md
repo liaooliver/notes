@@ -1796,6 +1796,20 @@ git push
 
 - **Multipass VM 重開之後 IP 可能會變**，`/etc/hosts` 跟 `~/.kube/config-k3s` 兩邊都要更新。每次 `multipass start` 之後先 `multipass info k3s` 確認一次。
 
+- **Mac 睡醒之後，VM 裡所有時間戳都不能信。** Mac 進睡眠時 Multipass VM 被一起暫停，VM 的時鐘就停在那一刻；醒來之後 `systemd-timesyncd` 才會把它往前跳回真實時間。跳之前那幾分鐘發生的事，會被蓋上「暫停當下」那個舊時間戳，對時之後 `kubectl get pods` 的 `AGE` 就會憑空多出你睡覺的那幾個小時。
+
+  這個症狀很容易被誤判成 GitOps 最不該發生的事 —— 「叢集跑的版本比 Git 還新」。實際踩到的樣子：production 的 pod 跑著 `sha-1044bc45`、`AGE` 顯示 `18h`，但 config repo 裡把 image 換成這個 tag 的 commit 是 15 分鐘前才推的。看起來就像有人繞過 Git 直接 `kubectl set image`。
+
+  分辨方法是去看 VM 的 journal 有沒有一段空白：
+
+  ```bash
+  multipass exec k3s -- sudo journalctl --no-pager -o short-iso | less
+  # 找 2026-09-25T17:57:36Z → 2026-09-26T12:04:09Z 這種「中間 18 小時一行都沒有」的斷點，
+  # 斷點後的第一筆通常就是 systemd-timesyncd 重新對時
+  ```
+
+  有斷點就是睡眠造成的假警報，Git 跟叢集其實是一致的。順帶一提對照組很好認：對時之後才建的 pod（例如 staging 那批）`AGE` 是正常的幾分鐘，同一個叢集裡兩個 namespace 差了 18 小時，那個差距本身就是線索。
+
 - **16 GB 的記憶體要算著花。** Argo CD 一套就吃 ~1.5 GB，是 VM 裡最肥的。不要在這台機器上同時開多節點叢集 + Docker Desktop + 一堆 Chrome 分頁，macOS 開始 swap 之後整台機器會非常鈍。真的要練多節點，先 `multipass stop` 把 Argo CD 那台關掉。
 
 ### CI / CD
