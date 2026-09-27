@@ -1,0 +1,1085 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Notes 架構地圖 · Git 流程規則</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  /* 單一主題：低亮度墨綠底、灰綠字，刻意不做亮色版 */
+  :root {
+    --ground: #33423a;
+    --surface: #3a4a41;
+    --surface-2: #2c3a32;
+    --ink: #e3e7df;
+    --ink-2: #c4ccc1;
+    --ink-3: #97a49a;
+    --line: #52625a;
+    --line-strong: #7b8c82;
+    --accent: #a9c9b4;
+    --pass: #a5cfae;
+    --wait: #d8bb78;
+    --fail: #dc9d8d;
+    --code-bg: #2a3730;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  code, .mono {
+    font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: .88em;
+  }
+  code {
+    background: var(--code-bg);
+    padding: .05em .3em;
+    color: var(--ink);
+  }
+  a { color: var(--ink); text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--ink); }
+  h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.25; font-weight: 600; }
+
+  .topbar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 20;
+    background: var(--ground);
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .topbar-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 10px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 18px;
+  }
+  .brand { font-weight: 600; font-size: 14px; }
+  .brand small { color: var(--ink-3); font-weight: 400; margin-left: 8px; font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 0 4px; margin-left: auto; }
+  .chip {
+    border: 0;
+    background: none;
+    color: var(--ink-3);
+    padding: 2px 8px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 1.6;
+    border-bottom: 2px solid transparent;
+  }
+  .chip:hover { color: var(--ink); }
+  .chip[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .chip:focus-visible, .nav a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 30px 20px 80px;
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 40px;
+  }
+  .nav {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 62px);
+    align-self: start;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+    font-size: 13px;
+    border-right: 1px solid var(--line);
+    padding-right: 14px;
+  }
+  .nav h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-3);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .nav ol { list-style: none; margin: 0 0 18px; padding: 0; }
+  .nav a {
+    display: grid;
+    grid-template-columns: 46px 1fr;
+    gap: 6px;
+    padding: 3px 0 3px 8px;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+  }
+  .nav a .id { color: var(--ink-3); font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .nav a:hover { color: var(--ink); }
+  .nav a.active { border-left-color: var(--ink); color: var(--ink); }
+  .nav li[hidden] { display: none; }
+
+  .main { min-width: 0; }
+  .intro h1 { font-size: 28px; }
+  .intro .lede { color: var(--ink-2); max-width: 62ch; margin: 12px 0 0; }
+  .flow {
+    margin: 24px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .flow .node { border: 1px solid var(--line-strong); padding: 2px 10px; }
+  .flow .node.gate { border-color: var(--ink); border-width: 1.5px; }
+  .flow .arrow { color: var(--ink-3); }
+
+  .legend {
+    margin: 24px 0 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 4px 24px;
+    font-size: 13px;
+  }
+  .legend div { display: flex; gap: 10px; }
+  .legend b { font-weight: 600; min-width: 112px; }
+  .legend span { color: var(--ink-2); }
+
+  .overview { margin-top: 40px; }
+  .overview h2, .cases-heading, .issues h2, .files h2 { font-size: 18px; margin-bottom: 10px; }
+  .table-wrap { overflow-x: auto; border-top: 1px solid var(--line-strong); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 700px; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 500; color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; }
+  tbody tr[hidden] { display: none; }
+  td .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); font-size: 12.5px; }
+  td a { text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+
+  /* 結果標記：一個小方塊 + 文字，不做底色藥丸 */
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+  .pill::before { content: ""; width: 8px; height: 8px; display: inline-block; background: currentColor; }
+  .pill.pass { color: var(--pass); }
+  .pill.wait { color: var(--wait); }
+  .pill.fail { color: var(--fail); }
+  .pill.none { color: var(--ink-3); }
+
+  .cases { margin-top: 40px; }
+  .case {
+    border-top: 1px solid var(--line-strong);
+    padding: 22px 0 34px;
+    scroll-margin-top: 80px;
+  }
+  .case[hidden] { display: none; }
+  .case-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 6px; font-size: 12.5px; }
+  .case-head .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); }
+  .case-head .stage { text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); font-size: 11.5px; }
+  .case-head .pill { margin-left: auto; }
+  .case h2 { font-size: 20px; }
+  .story { margin: 16px 0 0; display: grid; gap: 12px; }
+  .story > div { display: grid; grid-template-columns: 80px 1fr; gap: 12px; }
+  .story dt {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    padding-top: 5px;
+  }
+  .story dd { margin: 0; max-width: 72ch; }
+  .story ol, .story ul { margin: 2px 0 0; padding-left: 20px; }
+  .story li { margin: 2px 0; }
+  .story li ul { padding-left: 18px; }
+  .story dd.result { font-weight: 500; }
+
+  .evidence {
+    margin: 18px 0 0;
+    padding: 10px 0 10px 14px;
+    border-left: 2px solid var(--line-strong);
+    font-size: 14px;
+    max-width: 78ch;
+    color: var(--ink-2);
+  }
+  .evidence b { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 2px; font-weight: 500; }
+
+  .diagram {
+    margin: 22px 0 0;
+    border-top: 1px solid var(--line);
+    overflow-x: auto;
+    padding: 10px 0 0;
+  }
+  .diagram-label {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    padding-bottom: 4px;
+  }
+
+  .issues { margin-top: 40px; border-top: 1px solid var(--line-strong); padding-top: 20px; }
+  .issues ul { margin: 0; padding-left: 20px; max-width: 78ch; color: var(--ink-2); }
+  .issues li { margin: 6px 0; }
+  .files { margin-top: 36px; }
+  .files table { min-width: 520px; }
+  .empty { display: none; color: var(--ink-3); padding: 30px 0; }
+  .empty.show { display: block; }
+
+  @media (max-width: 860px) {
+    .page { grid-template-columns: 1fr; gap: 20px; }
+    .nav { position: static; max-height: none; border-right: 0; padding-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+    .nav ol { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+    .nav a { grid-template-columns: auto; padding: 2px 0; border-left: 0; }
+    .nav a.active { text-decoration: underline; }
+    .nav a .label { display: none; }
+    .story > div { grid-template-columns: 1fr; gap: 2px; }
+    .case-head .pill { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+
+  /* 互動圖表：控制列與 SVG 樣式（seqviz.js / 流程圖共用） */
+  .viz-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0 4px; font-size: 13px; }
+  .viz-ctl button, .viz-scn button {
+    border: 1px solid var(--line-strong); background: none; color: var(--ink);
+    font: inherit; font-size: 12.5px; padding: 2px 10px; cursor: pointer; line-height: 1.6;
+  }
+  .viz-ctl button:hover, .viz-scn button:hover { border-color: var(--ink); }
+  .viz-ctl button:disabled { opacity: .35; cursor: default; }
+  .viz-ctl button:focus-visible, .viz-scn button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .viz-count { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 56px; font-size: 12.5px; }
+  .viz-range { flex: 1 1 160px; min-width: 120px; accent-color: var(--accent); }
+  .viz-caption { font-size: 13.5px; color: var(--ink); min-height: 1.6em; margin: 2px 0 10px; font-weight: 500; max-width: 80ch; }
+  .viz-svg { overflow-x: auto; padding-bottom: 6px; }
+  .viz-scn { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+  .viz-scn button[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .seq:focus-visible, .flow-viz:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+
+  .seq-svg text, .flow-svg text { font-family: "IBM Plex Sans", "Noto Sans TC", "PingFang TC", sans-serif; font-size: 13px; fill: var(--ink-2); }
+  .seq-svg .head rect { fill: var(--surface-2); stroke: var(--line-strong); }
+  .seq-svg .head rect.actor { stroke-dasharray: 3 2; }
+  .seq-svg .head text { fill: var(--ink); font-weight: 500; }
+  .seq-svg .head.cur rect { fill: var(--accent); stroke: var(--accent); }
+  .seq-svg .head.cur text { fill: var(--ground); font-weight: 600; }
+  .seq-svg .life { stroke: var(--line); stroke-dasharray: 4 4; }
+  .seq-svg .life.cur { stroke: var(--accent); stroke-dasharray: none; }
+  .seq-svg .msg-line { stroke: var(--ink-2); stroke-width: 1.2; fill: none; }
+  .seq-svg .msg-line.dashed { stroke-dasharray: 5 4; }
+  .seq-svg .ah { fill: var(--ink-2); }
+  .seq-svg .ah-open, .seq-svg .ah-x { stroke: var(--ink-2); fill: none; stroke-width: 1.2; }
+  .seq-svg .row.cur .msg-line, .seq-svg .row.cur .ah-open, .seq-svg .row.cur .ah-x { stroke: var(--accent); stroke-width: 2; }
+  .seq-svg .row.cur .ah { fill: var(--accent); }
+  .seq-svg .row.cur text { fill: var(--ink); font-weight: 600; }
+  .seq-svg .row.future { opacity: .14; }
+  .seq-svg .row.done { opacity: .55; }
+  .seq-svg .note-rect { fill: var(--surface); stroke: var(--line-strong); }
+  .seq-svg .row.cur .note-rect { stroke: var(--accent); stroke-width: 1.5; }
+  .seq-svg .note-text { fill: var(--ink-2); }
+  .seq-svg .frame-rect { fill: none; stroke: var(--line-strong); stroke-dasharray: 2 3; }
+  .seq-svg .frame.cur .frame-rect { stroke: var(--accent); stroke-dasharray: none; }
+  .seq-svg .frame-kind { font-size: 11.5px; fill: var(--ink); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .seq-svg .frame-label { font-size: 12px; fill: var(--ink-3); }
+  .seq-svg .sep-line { stroke: var(--line-strong); stroke-dasharray: 4 3; }
+  .seq-svg .row.msg, .seq-svg .row.self, .seq-svg .row.note { cursor: pointer; }
+
+  .flow-svg { display: block; min-width: 900px; width: 100%; height: auto; }
+  .flow-svg .node rect, .flow-svg .node polygon { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1; }
+  .flow-svg .node text { fill: var(--ink); font-size: 12.5px; }
+  .flow-svg .node .sub { fill: var(--ink-3); font-size: 11.5px; }
+  .flow-svg .node.cur rect, .flow-svg .node.cur polygon { fill: var(--accent); stroke: var(--accent); }
+  .flow-svg .node.cur text { fill: var(--ground); font-weight: 600; }
+  .flow-svg .node.done rect, .flow-svg .node.done polygon { stroke: var(--accent); }
+  .flow-svg .node.off { opacity: .28; }
+  .flow-svg .edge path { fill: none; stroke: var(--ink-2); stroke-width: 1.2; }
+  .flow-svg .edge.dashed path { stroke-dasharray: 5 4; }
+  .flow-svg .edge .ah { fill: var(--ink-2); }
+  .flow-svg .edge text { font-size: 11.5px; fill: var(--ink-3); }
+  .flow-svg .edge.cur path { stroke: var(--accent); stroke-width: 2.2; }
+  .flow-svg .edge.cur .ah { fill: var(--accent); }
+  .flow-svg .edge.cur text { fill: var(--ink); font-weight: 600; }
+  .flow-svg .edge.done path { stroke: var(--accent); opacity: .7; }
+  .flow-svg .edge.done .ah { fill: var(--accent); }
+  .flow-svg .edge.off { opacity: .22; }
+  .flow-svg .cluster rect { fill: none; stroke: var(--line); stroke-dasharray: 3 3; }
+  .flow-svg .cluster text { fill: var(--ink-3); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; }
+  @media (prefers-reduced-motion: no-preference) {
+    .seq-svg .row, .seq-svg .head rect, .flow-svg .node, .flow-svg .edge, .flow-svg .node rect, .flow-svg .node polygon { transition: opacity .25s, fill .25s, stroke .25s; }
+  }
+
+  /* 時序圖 + 右側對照程式碼 */
+  .page { max-width: 1360px; grid-template-columns: 190px minmax(0, 1fr); }
+  .viz-row { display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 22px; align-items: start; }
+  .code-panel {
+    position: sticky; top: calc(env(safe-area-inset-top, 0px) + 60px);
+    max-height: calc(100vh - 80px); overflow-y: auto;
+    border-left: 1px solid var(--line); padding-left: 14px; font-size: 12.5px;
+  }
+  .snip-head { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 8px; }
+  .snip { border-left: 2px solid transparent; padding: 6px 0 6px 10px; margin: 0 0 10px -12px; cursor: pointer; transition: opacity .2s, border-color .2s; }
+  .snip:hover { border-left-color: var(--line-strong); }
+  .snip:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .snip.cur { border-left-color: var(--accent); }
+  .snip.dim { opacity: .38; }
+  .snip-file { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--ink-3); margin-bottom: 4px; }
+  .snip.cur .snip-file { color: var(--accent); }
+  .snip pre { margin: 0; padding: 8px 10px; background: var(--code-bg); overflow-x: auto; font-family: "IBM Plex Mono", monospace; font-size: 11.5px; line-height: 1.55; color: var(--ink-2); }
+  .snip pre code { background: none; padding: 0; font-size: inherit; }
+  .snip pre .hl { display: inline-block; width: 100%; color: var(--ink); }
+  .snip.cur pre .hl { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: -10px 0 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+  .snip-why { margin: 6px 0 0; color: var(--ink-2); line-height: 1.55; }
+  .snip.cur .snip-why { color: var(--ink); }
+  @media (max-width: 1100px) {
+    .viz-row { grid-template-columns: 1fr; }
+    .code-panel { position: static; max-height: none; border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 10px; }
+  }
+
+
+
+  /* ---------- 架構學習地圖：在 scenario-atlas 主題上加的部分 ---------- */
+  .tabs { display: flex; flex-wrap: wrap; gap: 0 2px; margin-left: auto; }
+  .tabs a {
+    color: var(--ink-3); text-decoration: none; font-size: 13px; padding: 2px 9px;
+    border-bottom: 2px solid transparent; line-height: 1.6;
+  }
+  .tabs a:hover { color: var(--ink); }
+  .tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .tabs a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .eyebrow { font-size: 11.5px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); margin-bottom: 8px; }
+  .intro-grid { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 28px; align-items: start; }
+
+  /* 總架構圖 */
+  .arch-wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 22px; }
+  .arch-svg { min-width: 1080px; }
+  .flow-svg .lbg { fill: var(--ground); }
+  .flow-svg .edge .lbg { fill: var(--ground); stroke: none; }
+  .arch-svg .cluster[data-id="NS_S"] rect, .arch-svg .cluster[data-id="NS_P"] rect { stroke: var(--line-strong); }
+  .arch-svg .has-kp { cursor: pointer; }
+  .arch-svg .node.has-kp:hover rect, .arch-svg .node.has-kp:hover polygon { stroke: var(--ink); }
+  .arch-svg .cluster.has-kp:hover rect { stroke: var(--ink-2); }
+  .arch-svg .has-kp:focus-visible { outline: 2px solid var(--ink); }
+  .arch-svg .node.sel rect, .arch-svg .node.sel polygon { stroke: var(--wait); stroke-width: 2.5; }
+  .arch-svg .cluster.sel rect { stroke: var(--wait); stroke-width: 2; stroke-dasharray: none; }
+  .flow-svg .cluster.cur rect { stroke: var(--accent); stroke-dasharray: none; stroke-width: 1.6; }
+  .flow-svg .cluster.done rect { stroke: var(--accent); }
+
+  .node-panel { border-top: 1px solid var(--line-strong); padding-top: 12px; font-size: 13.5px; min-height: 180px; }
+  .node-panel .hint { color: var(--ink-3); font-size: 12.5px; margin: 0 0 10px; }
+  .np-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+  .np-id { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--wait); letter-spacing: .06em; }
+  .np-head b { font-weight: 600; font-size: 15px; line-height: 1.4; }
+  .np-empty { color: var(--ink-3); }
+  .np-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 14px 28px; }
+  .np-list a { display: grid; grid-template-columns: 58px 1fr; gap: 0 8px; text-decoration: none; }
+  .np-list a:hover .np-t { text-decoration: underline; }
+  .np-kp { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+  .np-t { font-weight: 500; }
+  .np-pg { grid-column: 2; font-size: 11.5px; color: var(--ink-3); }
+  .np-list p { margin: 3px 0 0 66px; color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
+
+  /* mini-map */
+  .mini { margin: 0; }
+  .mini-link { display: block; border: 1px solid var(--line); padding: 6px; background: var(--surface-2); }
+  .mini-link:hover { border-color: var(--line-strong); }
+  .mini-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .arch-mini { display: block; width: 100%; height: auto; min-width: 0; }
+  .arch-mini text { display: none; }
+  .arch-mini .edge path { stroke: var(--line-strong); stroke-width: 3; }
+  .arch-mini .edge .ah { fill: var(--line-strong); }
+  .arch-mini .edge .lbg { display: none; }
+  .arch-mini .node rect, .arch-mini .node polygon { fill: var(--surface); stroke: var(--line-strong); stroke-width: 2; }
+  .arch-mini .cluster rect { stroke: var(--line-strong); stroke-width: 2; }
+  .arch-mini .cluster text { display: block; font-size: 26px; fill: var(--ink-3); }
+  .arch-mini .cluster[data-id="NS_S"] text, .arch-mini .cluster[data-id="NS_P"] text,
+  .arch-mini .cluster[data-id="LOCAL"] text, .arch-mini .cluster[data-id="GHC"] text { display: none; }
+  .arch-mini .node.hit rect, .arch-mini .node.hit polygon { fill: var(--accent); stroke: var(--accent); }
+  .arch-mini .cluster.hit rect { stroke: var(--accent); stroke-width: 5; stroke-dasharray: none; fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .mini figcaption { font-size: 12px; color: var(--ink-3); margin-top: 6px; font-family: "IBM Plex Mono", monospace; line-height: 1.5; }
+
+  /* 知識點 */
+  .kp { border-top: 1px solid var(--line-strong); padding: 26px 0 40px; scroll-margin-top: 70px; }
+  .kp-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 12.5px; margin-bottom: 6px; }
+  .kp-head .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); }
+  .kp-head .where { font-family: "IBM Plex Mono", monospace; color: var(--accent); font-size: 12px; }
+  .kp h2 { font-size: 21px; }
+  .kp .tldr { margin: 10px 0 0; font-size: 15.5px; color: var(--ink); max-width: 70ch; font-weight: 500; }
+  .kp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; margin-top: 16px; align-items: start; }
+  .kp-body { max-width: 70ch; color: var(--ink-2); }
+  .kp-body p { margin: 0 0 12px; }
+  .kp-body ul, .kp-body ol { margin: 0 0 12px; padding-left: 20px; }
+  .kp-body li { margin: 3px 0; }
+  .kp-body b { color: var(--ink); font-weight: 600; }
+  .terms { margin: 18px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 8px 28px; font-size: 13.5px; }
+  .terms div { display: grid; grid-template-columns: minmax(96px, auto) 1fr; gap: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .terms dt { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink); }
+  .terms dd { margin: 0; color: var(--ink-2); line-height: 1.55; }
+  .flowx { min-width: 0; }
+  .grid-flow { display: block; height: auto; width: 100%; }
+
+  /* 終端機 */
+  .cmds { margin-top: 22px; display: grid; gap: 14px; }
+  .cmds-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+  .term { border-left: 2px solid var(--line-strong); padding-left: 12px; }
+  .term pre { margin: 0; background: var(--code-bg); padding: 10px 12px; overflow-x: auto; font-family: "IBM Plex Mono", monospace; font-size: 12px; line-height: 1.55; color: var(--ink-3); }
+  .term .cmd { color: var(--ink); }
+  .term .cmd::before { content: "$ "; color: var(--accent); }
+  .term .cm { color: var(--wait); }
+  .term p { margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2); max-width: 78ch; }
+
+  .pitfalls { margin-top: 18px; font-size: 14px; max-width: 78ch; }
+  .pitfalls b { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--fail); margin-bottom: 4px; font-weight: 500; }
+  .pitfalls ul { margin: 0; padding-left: 20px; color: var(--ink-2); }
+  .pitfalls li { margin: 4px 0; }
+
+  .pager { display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line-strong); padding-top: 18px; margin-top: 10px; font-size: 14px; }
+  .pager a { text-decoration: none; display: grid; gap: 2px; }
+  .pager a:hover span:last-child { text-decoration: underline; }
+  .pager small { color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; }
+  .pager .next { text-align: right; margin-left: auto; }
+
+  /* 總覽頁：閱讀路線 */
+  .route { margin-top: 44px; }
+  .route h2 { font-size: 18px; margin-bottom: 6px; }
+  .route > p { color: var(--ink-2); margin: 0 0 14px; max-width: 70ch; }
+  .layer { border-top: 1px solid var(--line-strong); padding: 16px 0 18px; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; }
+  .layer h3 { font-size: 17px; }
+  .layer h3 a { text-decoration: none; }
+  .layer h3 a:hover { text-decoration: underline; }
+  .layer .eyebrow { margin-bottom: 4px; }
+  .layer .desc { color: var(--ink-2); font-size: 13.5px; margin: 6px 0 0; }
+  .layer ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .layer li a { display: grid; grid-template-columns: 62px 1fr; gap: 8px; text-decoration: none; font-size: 14px; }
+  .layer li a:hover .t { text-decoration: underline; }
+  .layer li .id { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+  .layer li .s { grid-column: 2; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+  .howto { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 6px 26px; font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 12px; }
+  .howto b { color: var(--ink); font-weight: 500; }
+  .note-src { margin-top: 36px; font-size: 12.5px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 12px; max-width: 90ch; }
+
+  @media (max-width: 1100px) {
+    .arch-wrap, .intro-grid, .kp-grid { grid-template-columns: 1fr; }
+    .kp-grid .mini, .intro-grid .mini { max-width: 420px; }
+  }
+  @media (max-width: 860px) {
+    .page { grid-template-columns: 1fr; }
+    .layer { grid-template-columns: 1fr; gap: 10px; }
+    .tabs { margin-left: 0; }
+  }
+
+</style>
+
+<header class="topbar"><div class="topbar-inner">
+    <div class="brand">Notes 架構地圖 <small>liaooliver/notes · notes-deploy</small></div>
+    <nav class="tabs" aria-label="分頁"><a href="index.html">總覽</a><a href="git.html" aria-current="page">Git 流程</a><a href="ci.html">CI 與發版</a><a href="gitops.html">GitOps</a><a href="k8s.html">k8s runtime</a><a href="cmd.html">k8s 指令</a></nav>
+  </div></header>
+<div class="page">
+  <nav class="nav" aria-label="知識點目錄">
+    <h3>Git 流程規則</h3>
+    <ol id="nav-list"><li><a href="#git-01"><span class="id">GIT-01</span><span class="label">分支模型：feature/* → staging → main，每一步叫醒什麼</span></a></li><li><a href="#git-02"><span class="id">GIT-02</span><span class="label">commit-msg hook：husky 怎麼掛上 git，commitlint 何時執行</span></a></li><li><a href="#git-03"><span class="id">GIT-03</span><span class="label">CI 的 commitlint：PR 檢的跟 merge 後進歷史的，不是同一顆 commit</span></a></li><li><a href="#git-04"><span class="id">GIT-04</span><span class="label">Branch protection：三個 check 名稱、不要求 approve、直接 push 被拒</span></a></li><li><a href="#git-05"><span class="id">GIT-05</span><span class="label">promote staging → main 一定要 merge commit：squash 會切斷祖先</span></a></li><li><a href="#git-06"><span class="id">GIT-06</span><span class="label">skip-ci 標記：訊息裡出現那個字串，run 根本不會被建立</span></a></li><li><a href="#git-07"><span class="id">GIT-07</span><span class="label">Conventional Commits 的 type 決定下一個版號</span></a></li></ol>
+    <h3>其他</h3>
+    <ol><li><a href="index.html"><span class="id">MAP</span><span class="label">總架構圖</span></a></li></ol>
+  </nav>
+  <main class="main">
+    <section class="intro"><div class="intro-grid">
+      <div><div class="eyebrow">第 1 層 · 本機與 GitHub</div><h1>Git 流程規則</h1><p class="lede">這一層管的是 commit 從你的 Mac 出發，一路到 PR 被 merge 為止：本機 hook 先擋訊息格式，GitHub 再用 branch protection 擋 merge。merge 之後的 push 事件交給 GitHub Actions（CI 頁），這裡只講「什麼時候會叫醒它、什麼時候叫不醒」。</p></div>
+      <figure class="mini"><div class="mini-slot" data-ids="DEV GH CL BUILD WB ACTIONS REL"></div><figcaption>這一層在總架構圖上的範圍 · 點圖回總覽</figcaption></figure>
+    </div></section>
+    
+<article class="kp" id="git-01">
+  <div class="kp-head"><span class="id">GIT-01</span><span class="where">GitHub › liaooliver/notes › branches · ci.yml / commitlint.yml 的 on:</span></div>
+  <h2>分支模型：feature/* → staging → main，每一步叫醒什麼</h2>
+  <p class="tldr">功能分支 push 什麼都不跑；PR 跑三個 required check；merge 後的 push 才會 build image。只有 push 到 main 會出現人工 Approve 與發版。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>這個 repo 有三種分支：從 <code>staging</code> 切出來的 <code>feature/*</code>、集成用的 <code>staging</code>、發布用的 <code>main</code>。每個動作會叫醒哪些 job，完全由 workflow 的 <code>on:</code> 和各 job 的 <code>if:</code> 決定。</p>
+<p>runtime 的順序：push <code>feature/*</code> 時，<code>ci.yml</code> 和 <code>commitlint.yml</code> 的 <code>push.branches</code> 只列 <code>main</code>、<code>staging</code>，所以 Actions 一個 run 都不會建立。開 PR 時 <code>pull_request</code> 事件成立，跑 <code>build</code>、<code>white-box</code>、<code>commitlint</code>，這三個就是 branch protection 要的 required check。<code>docker</code> 以後的 job 都寫了 <code>if: github.event_name == 'push'</code>，PR 階段不會出現。</p>
+<p>merge 進 <code>staging</code> 產生一次 push：build 和 white-box 重跑一次，接著 <code>docker</code> 推 image、<code>bump-staging</code> 改 staging manifest。merge 進 <code>main</code> 也是 push，但 <code>bump-staging</code> 的 <code>if</code> 要求 <code>refs/heads/staging</code> 而被略過，換成綁 <code>environment: production</code> 的 <code>bump-production</code> 停下來等人按 Approve，再接 <code>release</code>。</p>
+<p>為什麼要多一層 <code>staging</code>：發版（Approve、打 tag）是正式動作。如果每個功能分支都直接進 <code>main</code>，每個小改動都要審一次、版號跳得很碎。先在 <code>staging</code> 收斂，merge 頻率和發布頻率就分開了。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="DEV GH CL BUILD WB"></div><figcaption>位置：開發者本機（git、husky commit-msg hook）、GitHub：liaooliver/notes（PR、branch protection）、commitlint.yml、ci.yml › build、ci.yml › white-box</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>required status check</dt><dd>branch protection 指定「這幾個 check 必須 success 才能按 merge」。只在 PR 階段有意義，是第一道 gate。</dd></div><div><dt>push 事件</dt><dd>merge 一個 PR 在 GitHub 上等於對 base 分支做一次 push。docker、bump-*、release 只認這個事件。</dd></div><div><dt>environment: production</dt><dd>job 綁了有 required reviewer 的 environment，GitHub 會在 job 開始前暫停整個 run，等人 Approve。是只有 main 才有的第二道 gate。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">一個改動經過的兩道 gate · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"dev","c":0,"r":1,"l":["feature/*","本機 commit（husky 先檢）"]},{"id":"nop","c":0,"r":2,"l":["push feature/*","沒有任何 run"]},{"id":"llm","c":1,"r":0,"l":["LLM PR Assist","只聽 pull_request，不擋 merge"]},{"id":"pr1","c":1,"r":1,"l":["PR → staging","build · white-box · commitlint"],"shape":"diamond"},{"id":"stg","c":2,"r":1,"l":["push staging","重跑 + docker + bump-staging"]},{"id":"pr2","c":3,"r":1,"l":["PR staging → main","同一組 3 個 required check"],"shape":"diamond"},{"id":"main","c":4,"r":1,"l":["push main","docker → 等人工 Approve"],"shape":"diamond"},{"id":"rel","c":5,"r":1,"l":["bump-production → release","只有 main 會跑"]}],"edges":[{"id":"e1","from":"dev","to":"nop","label":"push 不觸發","dashed":true},{"id":"e2","from":"dev","to":"pr1","label":"開 PR"},{"id":"e7","from":"pr1","to":"llm","dashed":true},{"id":"e3","from":"pr1","to":"stg","label":"merge"},{"id":"e4","from":"stg","to":"pr2","label":"累積到可發版"},{"id":"e5","from":"pr2","to":"main","label":"merge commit"},{"id":"e6","from":"main","to":"rel","label":"Approve"}],"steps":[{"n":["dev"],"e":[],"t":"從 staging 切 feature/*，每次 commit 先過本機 husky"},{"n":["nop"],"e":["e1"],"t":"push feature/*：兩個 workflow 的 push 只聽 main、staging，不建立 run"},{"n":["pr1","llm"],"e":["e2","e7"],"t":"開 PR：跑 3 個 required check，LLM 另外跑但不擋"},{"n":["stg"],"e":["e3"],"t":"merge 進 staging 是一次 push：重跑檢查，再推 image、改 staging manifest"},{"n":["pr2"],"e":["e4"],"t":"promote PR 跑的還是同一組 3 個 check，這時還不會發版"},{"n":["main"],"e":["e5"],"t":"merge 進 main：docker 推 image，bump-production 停在 Waiting"},{"n":["rel"],"e":["e6"],"t":"有人按 Approve 才改 production manifest，接著 release 算版號"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="1 2 3 5" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>  workflow_dispatch:</span>
+<span></span>
+<span>  # push 監聽 staging 是 GitOps 的必要條件：image 必須從「合併後」的程式碼</span>
+<span>  # build 出來，所以 staging 一定要有 push 事件。這等於把 PR #14</span>
+<span>  # (ci: skip pipeline re-run on push to staging) 的決定改回來——</span>
+<span>  # 代價是 staging 的 PR 已經跑過的 build + white-box 會在 merge 後重跑一次（約 1 分鐘），</span>
+<span>  # 換到的是 staging 環境真的會換版。這是刻意的，不是手滑改回來的。</span>
+<span class="hl">  push:</span>
+<span class="hl">    branches: [ "main", "staging" ]</span>
+<span class="hl">  pull_request:</span>
+<span class="hl">    branches: [ "main", "staging" ]</span></code></pre>
+          <p class="snip-why">push 只列 main、staging，所以 feature/* 的 push 叫不醒它；PR 則是目標為這兩條分支才跑。</p>
+        </div>
+        <div class="snip" data-steps="1 2 3" tabindex="0">
+          <div class="snip-file">.github/workflows/commitlint.yml</div>
+          <pre><code><span>name: Commit Lint</span>
+<span></span>
+<span>on:</span>
+<span class="hl">  pull_request:</span>
+<span class="hl">  push:</span>
+<span class="hl">    branches: [ "main", "staging" ]</span></code></pre>
+          <p class="snip-why">pull_request 沒有限定分支，任何 PR 都跑；push 一樣只聽 main、staging。</p>
+        </div>
+        <div class="snip" data-steps="3 5" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>  docker:</span>
+<span>    name: Build &amp; Push ${{ matrix.svc.name }}</span>
+<span>    needs: white-box</span>
+<span>    runs-on: ubuntu-latest</span>
+<span class="hl">    if: github.event_name == 'push'</span></code></pre>
+          <p class="snip-why">docker 只認 push 事件，這就是 PR 階段不會 build image 的原因。</p>
+        </div>
+        <div class="snip" data-steps="3" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>  bump-staging:</span>
+<span>    name: Bump Staging Manifest</span>
+<span>    needs: docker</span>
+<span>    runs-on: ubuntu-latest</span>
+<span class="hl">    if: github.event_name == 'push' &amp;&amp; github.ref == 'refs/heads/staging'</span></code></pre>
+          <p class="snip-why">bump-staging 再多一個 ref 條件，所以 push main 時它是 skipped。</p>
+        </div>
+        <div class="snip" data-steps="5 6" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>  bump-production:</span>
+<span>    name: Ops Handoff / Bump Production Manifest</span>
+<span>    needs: docker</span>
+<span>    runs-on: ubuntu-latest</span>
+<span class="hl">    if: github.event_name == 'push' &amp;&amp; github.ref == 'refs/heads/main'</span>
+<span class="hl">    environment: production   # 沿用原本 ops-handoff 的審核閘，只是換掉執行內容</span></code></pre>
+          <p class="snip-why">第二道 gate：environment 讓 GitHub 在 job 開始前就暫停 run。</p>
+        </div>
+      </aside></div></div>
+  
+  <div class="evidence"><b>實際發生過</b><p>PR #41（promote 5 筆改動）merge 進 <code>main</code> 後，CI run #79 的時間軸：<code>Build Application</code> 17:07:32 開始、19 秒結束；<code>White-box Security Scan</code> 25 秒；web / api 兩個 image 在 17:09:55 前推完。<code>Bump Staging Manifest</code> 的狀態是 <b>skipped</b>（ref 不是 staging）。<code>Ops Handoff / Bump Production Manifest</code> 從 2026-09-25 17:09 一路等到 09-26 12:01 才有人按 Approve，前後約 19 小時，<code>Semantic Release</code> 在 12:02 跑完。</p>
+<p>同一個 promote 在 Actions 頁面會同時出現兩個 run：<code>Commit Lint</code>（run id 36165125200）與 <code>Enterprise CI/CD Pipeline</code>（36165125272），因為兩個 workflow 都監聽 push main。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>docs/branching-strategy.md 的「兩層 gate」表格已經過期：它寫 merge 進 staging 後的 push 不再重跑，但 ci.yml 為了 GitOps 把 staging 加回 push.branches，現在會重跑並推 image。以 ci.yml 為準。</li><li>PR 階段不會 build image，Dockerfile 壞掉要等 merge 進 staging 之後的 push 才會發現。</li><li>branch protection 只管 required check，不管來源分支。直接開 feature/* → main 的 PR 不會被擋，也就跳過了 staging（use-cases.md 已知問題）。</li></ul></div>
+</article>
+
+<article class="kp" id="git-02">
+  <div class="kp-head"><span class="id">GIT-02</span><span class="where">本機 › npm install（prepare）› .git/config core.hooksPath › .husky/commit-msg</span></div>
+  <h2>commit-msg hook：husky 怎麼掛上 git，commitlint 何時執行</h2>
+  <p class="tldr">npm install 觸發 prepare 跑 husky，husky 把 git 的 hooksPath 指到 .husky/_。之後每次 git commit，git 先跑 commitlint，exit 非 0 就不寫入 commit。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>hook 不是 clone 下來就有。<code>package.json</code> 的 <code>prepare</code> script 是 <code>husky</code>，npm 在 <code>npm install</code> / <code>npm ci</code> 結束時會自動執行它。husky 9 不會把檔案複製進 <code>.git/hooks/</code>，而是執行 <code>git config core.hooksPath .husky/_</code>，讓 git 改去 <code>.husky/_/</code> 找 hook。那個資料夾裡每種 hook 都是兩行的轉接檔，統一交給 <code>.husky/_/h</code>。</p>
+<p>當你 <code>git commit</code> 時：git 先把訊息寫進 <code>.git/COMMIT_EDITMSG</code>，再以這個路徑當 <code>$1</code> 執行 <code>.husky/_/commit-msg</code>。<code>h</code> 算出對應的 <code>.husky/commit-msg</code>，把 <code>node_modules/.bin</code> 加進 PATH，用 <code>sh -e</code> 跑它。它只有一行：<code>npx --no -- commitlint --edit $1</code>。commitlint 讀 <code>commitlint.config.js</code>，不合規就 exit 1，git 收到非 0 直接中止，commit 從來沒有存在過。</p>
+<p>為什麼放在本機：這是最便宜的一關，錯誤在 commit 當下就出現，不用等 push、等 runner。為什麼 CI 還要再檢一次：<code>git commit --no-verify</code> 會跳過所有 client-side hook，<code>HUSKY=0</code> 也能讓 hook 直接 exit 0。本機 hook 只是加速回饋，真正擋得住的是 PR 上的 <code>Validate Commit Messages</code>（下一個知識點）。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="DEV"></div><figcaption>位置：開發者本機（git、husky commit-msg hook）</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>core.hooksPath</dt><dd>git 設定：hook 腳本放在哪個資料夾。預設是 .git/hooks，husky 9 把它改成 .husky/_。</dd></div><div><dt>prepare</dt><dd>npm 的生命週期 script，npm install / npm ci 之後自動執行。這個 repo 用它來安裝 husky。</dd></div><div><dt>--no-verify</dt><dd>git commit 的參數，跳過 pre-commit 與 commit-msg hook。本機 hook 因此不能當成唯一防線。</dd></div><div><dt>npx --no</dt><dd>只用本機已安裝的套件，不自動從 npm 下載。沒跑過 npm install 時這一行會失敗。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant D as Developer
+    participant N as npm
+    participant G as git
+    participant H as husky（.husky/_）
+    participant C as commitlint
+    D->>N: npm install（clone 後第一次）
+    N->>N: 生命週期 prepare：執行 husky
+    N->>G: git config core.hooksPath .husky/_
+    Note over N: 寫出 .husky/_/commit-msg 等轉接檔與 h
+    D->>G: git commit -m "..."
+    G->>H: 執行 .husky/_/commit-msg，$1 = .git/COMMIT_EDITMSG
+    H->>C: sh -e .husky/commit-msg → npx --no -- commitlint --edit $1
+    C->>C: 套用 commitlint.config.js 的規則
+    alt 訊息合規
+        C-->>G: exit 0
+        G-->>D: commit 寫入
+    else type 缺少或不在清單
+        C-->>G: exit 1
+        G-->>D: commit 中止，沒有產生任何 commit
+    end
+    opt git commit --no-verify
+        D->>G: 不跑 commit-msg hook，直接寫入
+        Note over D,G: 只能等 PR 上的 Validate Commit Messages 抓
+    end
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0 1" tabindex="0">
+          <div class="snip-file">package.json</div>
+          <pre><code><span>  "scripts": {</span>
+<span>    "test": "npm run test --workspaces --if-present",</span>
+<span>    "build": "npm run build --workspace frontend",</span>
+<span>    "commitlint": "commitlint",</span>
+<span class="hl">    "prepare": "husky",</span>
+<span>    "release": "semantic-release"</span>
+<span>  },</span></code></pre>
+          <p class="snip-why">prepare 是 npm 自動呼叫的；這一行就是 hook 能生效的唯一原因。</p>
+        </div>
+        <div class="snip" data-steps="2 3" tabindex="0">
+          <div class="snip-file">node_modules/husky/index.js（husky 9.1.7）</div>
+          <pre><code><span>	let _ = (x = '') =&gt; p.join(d, '_', x)</span>
+<span class="hl">	let { status: s, stderr: e } = c.spawnSync('git', ['config', 'core.hooksPath', `${d}/_`])</span>
+<span>	if (s == null) return 'git command not found'</span>
+<span>	if (s) return '' + e</span>
+<span></span>
+<span>	f.rmSync(_('husky.sh'), { force: true })</span>
+<span>	f.mkdirSync(_(), { recursive: true })</span>
+<span class="hl">	w(_('.gitignore'), '*')</span>
+<span class="hl">	f.copyFileSync(new URL('husky', import.meta.url), _('h'))</span>
+<span class="hl">	l.forEach(h =&gt; w(_(h), `#!/usr/bin/env sh\n. "\$(dirname "\$0")/h"`, { mode: 0o755 }))</span></code></pre>
+          <p class="snip-why">沒有複製任何東西進 .git/hooks，只改 core.hooksPath，再產生轉接檔。</p>
+        </div>
+        <div class="snip" data-steps="5 6" tabindex="0">
+          <div class="snip-file">node_modules/husky/husky（複製成 .husky/_/h）</div>
+          <pre><code><span class="hl">n=$(basename "$0")</span>
+<span class="hl">s=$(dirname "$(dirname "$0")")/$n</span>
+<span></span>
+<span>[ ! -f "$s" ] &amp;&amp; exit 0</span>
+<span></span>
+<span>if [ -f "$HOME/.huskyrc" ]; then</span>
+<span>	echo "husky - '~/.huskyrc' is DEPRECATED, please move your code to ~/.config/husky/init.sh"</span>
+<span>fi</span>
+<span>i="${XDG_CONFIG_HOME:-$HOME/.config}/husky/init.sh"</span>
+<span>[ -f "$i" ] &amp;&amp; . "$i"</span>
+<span></span>
+<span class="hl">[ "${HUSKY-}" = "0" ] &amp;&amp; exit 0</span>
+<span></span>
+<span>export PATH="node_modules/.bin:$PATH"</span>
+<span class="hl">sh -e "$s" "$@"</span>
+<span>c=$?</span></code></pre>
+          <p class="snip-why">從自己的檔名推出要跑 .husky/commit-msg；HUSKY=0 在這裡直接放行。</p>
+        </div>
+        <div class="snip" data-steps="6 8 10" tabindex="0">
+          <div class="snip-file">.husky/commit-msg</div>
+          <pre><code><span class="hl">npx --no -- commitlint --edit ${1}</span></code></pre>
+          <p class="snip-why">整個檔案就這一行；它的 exit code 就是 git 決定寫不寫 commit 的依據。</p>
+        </div>
+        <div class="snip" data-steps="7" tabindex="0">
+          <div class="snip-file">commitlint.config.js</div>
+          <pre><code><span>module.exports = {</span>
+<span class="hl">  extends: ['@commitlint/config-conventional'],</span>
+<span>  rules: {</span></code></pre>
+          <p class="snip-why">本機和 CI 讀的是同一份設定，所以兩邊的判定一致。</p>
+        </div>
+      </aside></div></div>
+  
+  <div class="evidence"><b>實際發生過</b><p>這個 sandbox 裡的 clone 還沒跑過 <code>npm install</code>：<code>git config --get core.hooksPath</code> 沒有輸出、<code>.husky/_</code> 不存在。也就是說，同一個 repo 換一台機器 clone 下來，在 npm install 之前 commit 什麼訊息都不會被擋。</p>
+<p>prepare 會在任何 npm install 時執行，包含 Docker build。PR #36 的 commit 記錄了 api image 的坑：<code>npm ci</code> 必須加 <code>--ignore-scripts</code>，否則根目錄 package.json 的 husky prepare 會在 <code>--omit=dev</code>（husky 沒被裝）之後以 exit 127 失敗。</p>
+<p>release-automation.md 第二階段：用一個「不知道規範」的子代理故意寫不合格式的訊息，結果連 <code>git commit</code> 都做不出來，本機 hook 就擋下了。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>換電腦或重新 clone 後忘了 npm install，hook 就不存在，要到 PR 才會被 CI 抓到。</li><li>husky 9 用的是 core.hooksPath，去 .git/hooks/ 裡找 commit-msg 是找不到的。</li><li>GitHub 網頁上按 Squash and merge 時寫的標題不經過任何本機 hook，只有 merge 後的 push 會 lint 它（見 git-03）。</li></ul></div>
+</article>
+
+<article class="kp" id="git-03">
+  <div class="kp-head"><span class="id">GIT-03</span><span class="where">GitHub Actions › commitlint.yml › Validate Commit Messages · commitlint.config.js</span></div>
+  <h2>CI 的 commitlint：PR 檢的跟 merge 後進歷史的，不是同一顆 commit</h2>
+  <p class="tldr">PR 階段 lint 的是分支上的 commit；squash merge 時在網頁上寫的標題是新 commit，只在 merge 後的 push 才被 lint。它一旦進了受保護分支就改不掉，只能改規則。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p><code>commitlint.yml</code> 用 <code>wagoid/commitlint-github-action</code> 在 runner 上跑同一份 <code>commitlint.config.js</code>。<code>fetch-depth: 0</code> 拉完整歷史，這樣 action 才算得出要檢查的 commit 範圍：PR 事件檢 PR 裡的所有 commit，push 事件檢這次 push 帶進來的 commit。</p>
+<p>問題出在 squash merge。你在 GitHub 按 Squash and merge 時可以改寫標題與內文，GitHub 用它產生一顆全新的 commit 推進 <code>staging</code>。PR 階段的 check 從來沒看過這顆 commit，第一次 lint 它是 merge 後 push 觸發的那次 run。這次失敗不會擋什麼，因為 commit 已經進去了。</p>
+<p>真正的傷害在下一次 promote。<code>staging → main</code> 的 PR 範圍包含這顆 commit，<code>Validate Commit Messages</code> 會紅，而它是 required check，PR 就 merge 不了。<code>staging</code> 受 branch protection 保護、禁止 force push，歷史改不掉，所以唯一的出路是改規則：這個 repo 因此關掉 <code>subject-case</code>、把 <code>body-max-line-length</code> 降成 warning，並把 <code>release</code> 加進 type 清單。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="GH CL"></div><figcaption>位置：GitHub：liaooliver/notes（PR、branch protection）、commitlint.yml</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>squash merge</dt><dd>把 PR 的所有 commit 壓成一顆新 commit，只有一個 parent。訊息是 merge 當下在網頁上組出來的。</dd></div><div><dt>規則等級 0 / 1 / 2</dt><dd>commitlint 的規則嚴重度：0 關閉、1 warning、2 error。只有 error 會讓 exit code 非 0。</dd></div><div><dt>subject-case</dt><dd>要求 subject 不能以大寫開頭。中文沒有大小寫，這條只會對開頭的英文專有名詞發作。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant D as Developer
+    participant G as GitHub
+    participant L as commitlint.yml
+    participant S as staging 歷史
+    D->>G: 開 PR #36（分支 commit：docs(gitops): rewrite Phase 9 ...）
+    G->>L: pull_request：lint PR 裡的 commit
+    L-->>G: ✅ 分支 commit 合規
+    D->>G: Squash and merge，標題改成 docs(gitops): Phase 9 改寫成...
+    G->>S: 產生新 commit 5e78230（PR 階段沒有人 lint 過）
+    G->>L: push staging：lint 這顆新 commit
+    L-->>G: ✖ subject-case（run 36159446784）
+    Note over S: 已在受保護分支，不能改寫也不能 force push
+    opt 若不改規則（commitlint.config.js 註解的推論）
+        D->>G: 開 promote PR staging → main
+        G->>L: PR 範圍包含 5e78230
+        L-->>G: ✖ 同一條規則，required check 永遠紅
+    end
+    D->>G: PR #37：subject-case 設為 0（改規則，不改歷史）
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="1 5 9" tabindex="0">
+          <div class="snip-file">.github/workflows/commitlint.yml</div>
+          <pre><code><span>jobs:</span>
+<span>  commitlint:</span>
+<span class="hl">    name: Validate Commit Messages</span>
+<span>    runs-on: ubuntu-latest</span>
+<span>    steps:</span>
+<span>      - name: Checkout Code</span>
+<span>        uses: actions/checkout@v7</span>
+<span>        with:</span>
+<span class="hl">          fetch-depth: 0</span>
+<span></span>
+<span>      - name: Lint Commits (Conventional Commits)</span>
+<span class="hl">        uses: wagoid/commitlint-github-action@v6</span></code></pre>
+          <p class="snip-why">同一個 job 同時聽 PR 與 push；job 的 name 就是 required check 的名字。</p>
+        </div>
+        <div class="snip" data-steps="6 7 11" tabindex="0">
+          <div class="snip-file">commitlint.config.js</div>
+          <pre><code><span>    // subject 是中英混寫，開頭常常是一個大寫的英文專有名詞</span>
+<span>    // （`docs(gitops): Phase 9 改寫成...`），會被判成 start-case 擋下來。</span>
+<span>    // 這條規則對中文本來就沒有意義——中文沒有大小寫，它只會對開頭那個</span>
+<span>    // 英文單字發作。關掉它，type / scope / 長度那些有意義的規則都還在。</span>
+<span>    // 踩到的那次：run 36159446784，而且那顆 commit 已經在 staging 歷史裡，</span>
+<span>    // 改不掉了——下一次 promote 會連它一起 lint，等於永遠過不了。</span>
+<span class="hl">    'subject-case': [0],</span></code></pre>
+          <p class="snip-why">subject-case 關掉的理由與觸發的 run 都寫在註解裡。</p>
+        </div>
+        <div class="snip" data-steps="6 11" tabindex="0">
+          <div class="snip-file">commitlint.config.js</div>
+          <pre><code><span>    // 同一類問題的第二次：squash merge 的 body 是 GitHub 幫你串出來的一整行，</span>
+<span>    // 不會自己折行；中文又不像英文有空白可以讓編輯器斷句，一段正常長度的說明</span>
+<span>    // 就會超過 100 字元。錯誤本身不影響任何東西，但它會跟著進 staging 歷史，</span>
+<span>    // 下一次 promote 到 main 時被整串 lint 一遍，變成永遠過不了的閘。</span>
+<span>    // 降成 warning（action 預設 failOnWarnings: false，所以不會擋），</span>
+<span>    // 提醒還在、但不會把自己鎖在門外。踩到的那次：run 36164538568。</span>
+<span class="hl">    'body-max-line-length': [1, 'always', 100],</span></code></pre>
+          <p class="snip-why">第二次同類問題：降成 1（warning），action 預設不因 warning 失敗。</p>
+        </div>
+        <div class="snip" data-steps="11" tabindex="0">
+          <div class="snip-file">commitlint.config.js</div>
+          <pre><code><span class="hl">    'type-enum': [2, 'always', [</span>
+<span class="hl">      'build', 'chore', 'ci', 'docs', 'feat', 'fix',</span>
+<span class="hl">      'perf', 'refactor', 'release', 'revert', 'style', 'test',</span>
+<span class="hl">    ]],</span>
+<span>  },</span>
+<span>};</span></code></pre>
+          <p class="snip-why">檔案最上方的註解說明：promote 標題用 release:，config-conventional 預設清單沒有，所以整份 type-enum 重寫一次。</p>
+        </div>
+      </aside></div></div>
+  
+  <div class="evidence"><b>實際發生過</b><p><b>run 36159446784</b>（Commit Lint #77，push staging，2026-09-25 16:14）：PR #36 的分支 commit 是 <code>docs(gitops): rewrite Phase 9 as shipped ...</code>，PR 階段通過。squash 時標題改成中文開頭的 <code>docs(gitops): Phase 9 改寫成實際做法，補兩條坑 (#36)</code>，push 後的 log：</p>
+<p><code>✖ subject must not be sentence-case, start-case, pascal-case, upper-case [subject-case]</code></p>
+<p><b>run 36164538568</b>（Commit Lint #83，PR #39 squash 後）：PR 裡三顆分支 commit 都有正常折行，squash 時寫的 body 是一整行中文，log：<code>✖ body's lines must not be longer than 100 characters [body-max-line-length]</code>。修正是 liaooliver/notes#37 與 liaooliver/notes#40，兩者都在下一次 promote（liaooliver/notes#41）之前進 staging，所以 #41 的 Commit Lint（run 36165125200）是綠的。</p>
+<p>liaooliver/notes#30 的 commit 訊息記錄了 <code>release</code> type 的由來：promote 的 squash 標題 <code>release: ...</code> 進了 main，但 PR 只看分支 commit、push main 那次又因為 skip-ci 標記沒有 run（見 git-06），所以從來沒被 lint 過；直到把 main 的歷史 merge 回來，它進了 PR 範圍才被擋。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>在網頁上按 Squash and merge 時寫的標題與內文，是整條流程中唯一沒有事先被 lint 的訊息。</li><li>push staging 的 Commit Lint 紅了不會回滾任何東西，很容易被忽略，要到下一次 promote 才爆出來。</li><li>降成 warning 不代表不檢查：log 裡仍會列出，只是 exit code 為 0。</li></ul></div>
+</article>
+
+<article class="kp" id="git-04">
+  <div class="kp-head"><span class="id">GIT-04</span><span class="where">GitHub › Settings › Branches › main / staging（classic branch protection）</span></div>
+  <h2>Branch protection：三個 check 名稱、不要求 approve、直接 push 被拒</h2>
+  <p class="tldr">main 與 staging 都要求走 PR，且三個 check 必須 success。GitHub 用 job 的 name 字串比對 required 清單，不看 workflow 檔名。approve 數設 0，因為單人 repo 自己不能 approve 自己。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p><code>main</code> 與 <code>staging</code> 用的是 classic branch protection（Rulesets 頁是空的），兩條分支設定完全相同。規則 A：必須透過 PR，approve 數為 0。規則 B：<code>Build Application</code>、<code>White-box Security Scan</code>、<code>Validate Commit Messages</code> 三個 status check 必須通過。</p>
+<p>runtime 時，每個 job 跑完會以它的 <code>name:</code> 當 check run 名稱回報到 PR 的 head commit。GitHub 拿這些字串去比 required 清單，三個都 success 才開放 Merge 按鈕。所以 <code>ci.yml</code> 裡 job 的 id 是 <code>build</code>，但 required check 叫 <code>Build Application</code>。改了 job 的 <code>name</code>，舊名字的 check 就再也不會出現，PR 會一直停在等待狀態。</p>
+<p>為什麼不要求 approve：GitHub 不計算 PR 作者自己的 approve。這是單人 repo，要求 1 人 approve 等於所有 PR 都 merge 不了。LLM PR Assist 的三個 job 刻意不列入清單，Gemini 回 429 或 503 時不該擋 merge。</p>
+<p>「必須透過 PR」對每個身分都生效，包含 CI 自己的 <code>github-actions[bot]</code>。semantic-release 曾經用 <code>GITHUB_TOKEN</code> 直接 push 版本 commit 到 <code>main</code>，被 GH006 擋下，這個結果直接決定了後來的兩個設計：release 只打 tag 不寫回 repo，manifest 搬到沒有保護的 notes-deploy。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="GH CL BUILD WB"></div><figcaption>位置：GitHub：liaooliver/notes（PR、branch protection）、commitlint.yml、ci.yml › build、ci.yml › white-box</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>check run</dt><dd>一個 job 回報到某個 commit 上的結果，名稱取 job 的 name。branch protection 以這個名稱比對。</dd></div><div><dt>classic branch protection</dt><dd>舊式的分支保護。bypass 名單只能豁免「必須走 PR」，無法針對特定身分豁免 status check。</dd></div><div><dt>GH006</dt><dd>classic branch protection 拒絕 push 時的錯誤碼。ruleset 擋下時則是 GH013，可用來判斷是哪種機制。</dd></div><div><dt>Include administrators</dt><dd>是否連 repo admin 也受規則限制。這裡是關閉的。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant D as Developer
+    participant G as GitHub（branch protection）
+    participant A as Actions
+    participant B as github-actions[bot]
+    D->>G: 開 PR（base 是 staging 或 main）
+    G->>A: pull_request 事件
+    A-->>G: check run「Build Application」
+    A-->>G: check run「White-box Security Scan」
+    A-->>G: check run「Validate Commit Messages」
+    G->>G: 用名稱字串比對 required 清單（3 個）
+    Note over G: LLM 三個 job 也會回報，但不在清單裡，不影響結果
+    alt 3 個都 success
+        G-->>D: Merge 按鈕可按（approve 數 0，不必等人）
+    else 任一失敗，或某個名稱根本沒出現
+        G-->>D: the base branch policy prohibits the merge
+    end
+    B->>G: GITHUB_TOKEN 直接 push main（run #32 的 semantic-release）
+    G-->>B: GH006：must be made through a pull request · 3 of 3 required checks expected
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="5 7 8 10" tabindex="0">
+          <div class="snip-file">GitHub 設定 · Branches（main 與 staging 相同）</div>
+          <pre><code><span>機制：classic branch protection（Rulesets 頁為空）</span>
+<span class="hl">Require a pull request before merging：開啟</span>
+<span>  required_approving_review_count：0</span>
+<span>  Allow specified actors to bypass：（空）</span>
+<span class="hl">Require status checks to pass：開啟</span>
+<span class="hl">  - Build Application</span>
+<span class="hl">  - White-box Security Scan</span>
+<span class="hl">  - Validate Commit Messages</span>
+<span>Include administrators：關閉</span>
+<span>Restrict who can push：未啟用</span>
+<span>Force push：禁止</span></code></pre>
+          <p class="snip-why">依 docs/gitops-roadmap.md 4-a 用 gh api 讀出的實際值整理，不是截圖。</p>
+        </div>
+        <div class="snip" data-steps="2" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>jobs:</span>
+<span>  # 1. Build 階段</span>
+<span>  build:</span>
+<span class="hl">    name: Build Application</span>
+<span>    runs-on: ubuntu-latest</span></code></pre>
+          <p class="snip-why">required 清單比對的是 name，不是 job id build。</p>
+        </div>
+        <div class="snip" data-steps="3" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>  # 2. White-box 階段 (等效 Checkmarx / Mend / Trivy)</span>
+<span>  white-box:</span>
+<span class="hl">    name: White-box Security Scan</span>
+<span>    needs: build</span>
+<span>    runs-on: ubuntu-latest</span></code></pre>
+          <p class="snip-why">job id 是 white-box，回報到 PR 上的名字是這一行。</p>
+        </div>
+        <div class="snip" data-steps="4" tabindex="0">
+          <div class="snip-file">.github/workflows/commitlint.yml</div>
+          <pre><code><span>jobs:</span>
+<span>  commitlint:</span>
+<span class="hl">    name: Validate Commit Messages</span>
+<span>    runs-on: ubuntu-latest</span></code></pre>
+          <p class="snip-why">第三個 required check 來自另一個 workflow；GitHub 不在乎它在哪個檔案。</p>
+        </div>
+        <div class="snip" data-steps="6" tabindex="0">
+          <div class="snip-file">.github/workflows/llm-pr-assist.yml</div>
+          <pre><code><span>name: LLM PR Assist</span>
+<span></span>
+<span>on:</span>
+<span class="hl">  pull_request:</span>
+<span class="hl">    types: [opened, synchronize, reopened]</span></code></pre>
+          <p class="snip-why">只聽 pull_request；三個 job 的 name（Commit Message Suggestion / PR Diff Summary / Code Review Comment）刻意不放進 required 清單。</p>
+        </div>
+      </aside></div></div>
+  
+  <div class="evidence"><b>實際發生過</b><p><b>run #32</b>（2026-09-17，PR #13 promote 後）：人工 Approve 之後，<code>Semantic Release</code> 在 <code>@semantic-release/git</code> 的 prepare 步驟失敗：</p>
+<p><code>remote: error: GH006: Protected branch update failed for refs/heads/main.</code><br/><code>remote: - Changes must be made through a pull request.</code><br/><code>remote: - 3 of 3 required status checks are expected.</code></p>
+<p>兩行分別對應規則 A 與規則 B。semantic-release 是在 main 還沒保護時設定的，加保護時沒有馬上跑一次發版，所以一直到第一次真的發版才發現。之後拿掉寫回 repo 的三個 plugin，<b>run #39</b>（PR #18 promote，總時長 16m22s）驗證 tag-only 發版，<code>Run semantic-release</code> 42 秒正常結束，打出 <code>notes-v1.3.0</code>。</p>
+<p>gitops-roadmap.md 4-a 的推論：bump commit 不會觸發任何 check，所以規則 B 對 bot 一定成立；classic 底下沒有身分能豁免規則 B，換成 GitHub App token 或 PAT 一樣失敗。這是把 manifest 搬到 notes-deploy 的原因。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>改 job 的 name 等於把 required check 改名：舊名字永遠不會回報，所有 PR 都卡住，要同步去 Settings 改清單。</li><li>用 paths-ignore 讓某些 PR 不跑 CI，同樣會讓 required check 永遠不出現（roadmap 記載的 rollback 死結）。</li><li>Include administrators 是關閉的。依 GitHub 對 classic protection 的規則，repo admin 不受限制，作者本人直接 push main 是否會被擋沒有實測紀錄；UC-12 描述的拒絕畫面是依 bot 被擋的經驗推得。</li></ul></div>
+</article>
+
+<article class="kp" id="git-05">
+  <div class="kp-head"><span class="id">GIT-05</span><span class="where">GitHub › PR staging → main › Merge 按鈕的選項 · docs/branching-strategy.md</span></div>
+  <h2>promote staging → main 一定要 merge commit：squash 會切斷祖先</h2>
+  <p class="tldr">squash 產生的 commit 只有一個 parent（舊 main），git 不知道內容來自 staging。下一次 promote 要重放 22 顆 commit、每個檔案都衝突。修法是 -s ours 把 main 記成 staging 的 parent，而且修的那個 PR 本身也不能 squash。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>git 做 merge 時先找 merge-base（兩邊最近的共同祖先），再把 merge-base 之後兩邊各自的變更套在一起。merge commit 有兩個 parent，一個是舊 <code>main</code>、一個是 <code>staging</code> 的 tip，所以下一次 promote 時 merge-base 就是上次的 <code>staging</code> tip，只需要處理新的 commit。</p>
+<p>squash 產生的是一顆全新 commit，只有一個 parent：舊的 <code>main</code>。兩邊的檔案內容其實一樣，但 git 在 graph 上找不到這個關係，merge-base 還停在更早的地方。下一次 promote，git 會把 <code>staging</code> 上每一顆已經進過 main 的 commit 再套一次，每個檔案都衝突，而衝突的兩邊看起來還一樣。</p>
+<p>修法是在 <code>staging</code> 上做一次 <code>git merge -s ours origin/main</code>：<code>-s ours</code> 策略保留 <code>staging</code> 的檔案內容，只把 <code>main</code> 記成第二個 parent。這顆 merge commit 要進 <code>staging</code> 一樣得走 PR，而那個 PR 也必須用 merge commit；用 squash 又會把第二個 parent 丟掉，等於白做。功能分支進 <code>staging</code> 用 squash 沒問題，因為功能分支之後會被刪掉，不會再從它 merge。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="GH DEV"></div><figcaption>位置：GitHub：liaooliver/notes（PR、branch protection）、開發者本機（git、husky commit-msg hook）</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>merge-base</dt><dd>兩個分支最近的共同祖先。git merge 只處理 merge-base 之後的變更。</dd></div><div><dt>parent</dt><dd>commit 指向上一顆 commit 的連結。merge commit 有兩個，squash commit 只有一個。</dd></div><div><dt>-s ours</dt><dd>merge 策略：結果完全採用自己這邊的檔案，但把對方記成 parent。用來「只補祖先關係、不動內容」。</dd></div><div><dt>merge-base --is-ancestor</dt><dd>判斷 A 是不是 B 的祖先；exit 0 代表是。用來驗證接回去的方向對不對。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">真實 commit graph（liaooliver/notes#27 → #32） · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"m0","c":0,"r":0,"l":["main · daf7ae8","merge #18（notes-v1.3.0）"]},{"id":"s0","c":0,"r":2,"l":["staging · 9229759","#24 #25 #26 #28 累積"]},{"id":"m1","c":1,"r":0,"l":["main · d5fe533","#27 squash：1 個 parent"]},{"id":"x","c":1,"r":1,"l":["merge-base 仍是 6e89f94","22 顆要重放，內容只差 6 行"],"shape":"diamond"},{"id":"o","c":2,"r":1,"l":["347298b · -s ours","parent：3388a0e + d5fe533"]},{"id":"s1","c":2,"r":2,"l":["staging · 3388a0e","#30 又被 squash，祖先沒接上"]},{"id":"s2","c":3,"r":2,"l":["staging · fa75048","#31 用 merge commit"]},{"id":"m2","c":4,"r":0,"l":["main · 30b2812","#32 merge commit（v1.4.0）"]}],"edges":[{"id":"e1","from":"m0","to":"m1","label":"唯一的 parent"},{"id":"e2","from":"s0","to":"m1","label":"內容進去了，連結沒有","dashed":true},{"id":"e3","from":"m1","to":"x","dashed":true},{"id":"e4","from":"s0","to":"s1"},{"id":"e5","from":"m1","to":"o","label":"第二個 parent"},{"id":"e6","from":"s1","to":"o","label":"第一個 parent"},{"id":"e7","from":"o","to":"s2"},{"id":"e8","from":"s1","to":"s2"},{"id":"e9","from":"s2","to":"m2"},{"id":"e10","from":"m1","to":"m2"}],"steps":[{"n":["m0"],"e":[],"t":"main 停在 daf7ae8，是 #18 的 merge commit，已打 notes-v1.3.0"},{"n":["s0"],"e":[],"t":"staging 累積 #24 #25 #26（Vue 前端、GitOps bump），準備 promote"},{"n":["m1"],"e":["e1","e2"],"t":"#27 按了 Squash：d5fe533 只有 daf7ae8 一個 parent"},{"n":["x"],"e":["e3"],"t":"git 看不到 staging 已進 main，merge-base 退回 #17 的 6e89f94"},{"n":["s1"],"e":["e4"],"t":"#30 分支把 main merge 回來，但 PR 又被 squash，第二個 parent 掉了"},{"n":["o"],"e":["e5","e6"],"t":"重做：347298b 用 -s ours，內容不變，parent 補上 d5fe533"},{"n":["s2"],"e":["e7","e8"],"t":"#31 用 merge commit 進 staging，兩個 parent 都保住"},{"n":["m2"],"e":["e9","e10"],"t":"#32 promote 用 merge commit，main 與 staging 重新接上"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="2 3" tabindex="0">
+          <div class="snip-file">docs/branching-strategy.md</div>
+          <pre><code><span class="hl">原因是 parent。squash 產生的是一個全新的 commit，它只有一個 parent —— 舊的 `main`。git 因此完全不知道這份內容來自 `staging`：兩邊檔案一模一樣，但**沒有共同祖先**。下一次 promote，git 會拿 `staging` 的每一個 commit 重放一遍，**每個檔案都衝突**，而且內容看起來還一樣，非常難懂。</span></code></pre>
+          <p class="snip-why">文件裡的解釋：問題不在內容，在 parent。</p>
+        </div>
+        <div class="snip" data-steps="5 6" tabindex="0">
+          <div class="snip-file">docs/branching-strategy.md</div>
+          <pre><code><span>git checkout staging</span>
+<span class="hl">git merge -s ours --no-ff origin/main -m "chore: record main's squashed history as an ancestor of staging"</span>
+<span># -s ours 的意思是「留下我這邊的檔案內容，但把對方記成 parent」</span>
+<span>git push origin staging</span></code></pre>
+          <p class="snip-why">實際跑過的修法。-s ours 只動 graph，不動檔案。</p>
+        </div>
+        <div class="snip" data-steps="7" tabindex="0">
+          <div class="snip-file">docs/branching-strategy.md</div>
+          <pre><code><span class="hl">git diff origin/main origin/staging --stat                      # 要是空的（內容一致）</span>
+<span class="hl">git merge-base --is-ancestor origin/staging origin/main &amp;&amp; echo OK   # staging 是 main 的祖先</span></code></pre>
+          <p class="snip-why">驗證方向：staging 是 main 的祖先才對；反過來問會得到否，那是正常的。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">git show -s --format='%h parents: %p  %s' d5fe533 3388a0e 347298b fa75048 30b2812</span>
+d5fe533 parents: daf7ae8  release: promote Vue frontend and GitOps pipeline to production (#27)
+3388a0e parents: 9229759  chore: 把 main 的歷史接回 staging (#30)
+347298b parents: 3388a0e d5fe533  chore: record main's squashed history as an ancestor of staging
+fa75048 parents: 3388a0e 347298b  Merge pull request #31 from liaooliver/chore/sync-main-history-2
+30b2812 parents: d5fe533 fa75048  Merge pull request #32 from liaooliver/staging</pre><p>數 parent 就知道是哪種 merge：一個是 squash，兩個是 merge commit。#27 與 #30 都只有一個。</p></div><div class="term"><pre><span class="cmd">git log --graph --oneline 30b2812 -8</span>
+*   30b2812 Merge pull request #32 from liaooliver/staging
+|\
+| *   fa75048 Merge pull request #31 from liaooliver/chore/sync-main-history-2
+| |\
+| | * 347298b chore: record main's squashed history as an ancestor of staging
+| |/|
+| |/
+|/|
+* | d5fe533 release: promote Vue frontend and GitOps pipeline to production (#27)
+* |   daf7ae8 Merge pull request #18 from liaooliver/staging
+|\ \
+| | * 3388a0e chore: 把 main 的歷史接回 staging (#30)
+| | * 9229759 ci: allow the pipeline to be triggered manually (#28)</pre><p>347298b 那條斜線從 d5fe533 拉過來，就是 -s ours 補上的祖先關係。</p></div><div class="term"><pre><span class="cmd">git merge-base --is-ancestor origin/staging origin/main &amp;&amp; echo OK</span>
+OK</pre><p>現在的 repo 狀態：staging 是 main 的祖先，promote 不會重放舊 commit。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p>liaooliver/notes#27（2026-09-24）用 squash 把 staging promote 進 main，產生 <code>d5fe533</code>，parent 只有 <code>daf7ae8</code>。此時 main 與 staging 的 merge-base 是更早的 <code>6e89f94</code>（#17），staging 有 22 顆 commit 會被重放，而兩邊的檔案實際上只差 6 行（#28 加的 <code>workflow_dispatch</code>）。</p>
+<p>第一次修補 liaooliver/notes#30（分支 <code>chore/sync-main-history</code>，4 顆 commit）又被 squash 成 <code>3388a0e</code>，parent 只有 <code>9229759</code>，祖先關係沒接上。於是開了 liaooliver/notes#31（分支名加 <code>-2</code>），commit 訊息寫明「It has to be merged as a merge commit; squashing it drops the second parent」，這次用 merge commit 合進 staging（<code>fa75048</code>）。之後 liaooliver/notes#32 用 merge commit promote，CI run #61 正常跑完並打出 <code>notes-v1.4.0</code>。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>同一個 repo 的 Merge 按鈕記得上次選的方式。從功能分支的 squash 切到 promote 時，要主動改成 Create a merge commit。</li><li>補祖先的那個 PR 也必須用 merge commit，#30 就是在這一步又 squash 了一次。</li><li>驗證時 main 是不是 staging 的祖先會得到否，這是正常的：promote 的 merge commit 讓 main 多一顆 staging 沒有的節點。</li></ul></div>
+</article>
+
+<article class="kp" id="git-06">
+  <div class="kp-head"><span class="id">GIT-06</span><span class="where">GitHub › push / pull_request 事件 › 建立 workflow run 之前 · ci.yml 開頭註解</span></div>
+  <h2>skip-ci 標記：訊息裡出現那個字串，run 根本不會被建立</h2>
+  <p class="tldr">GitHub 在建立 run 之前先看 head commit 訊息，任何一行出現 skip-ci 標記就不建立。不是失敗，是不存在：沒有東西能 re-run，PR 上的 required check 也永遠不會出現。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>skip-ci 標記（方括號包住 skip 與 ci）原本是給 bot 用的：CI 自己 push 的 commit 帶上它，就不會再觸發 CI，避免無限迴圈。GitHub 處理 push 與 pull_request 事件時，會在建立 workflow run 之前檢查 head commit 的訊息，找到這個字串就整個略過，Actions 頁面上什麼都不會出現。</p>
+<p>squash merge 讓它很難防。squash 的預設內文是把 PR 裡每顆 commit 的訊息串起來，只要其中一顆為了講解舊設計而寫出這個字串，整顆 squash commit 就帶著它。push 到 <code>main</code> 時 <code>ci.yml</code> 和 <code>commitlint.yml</code> 都不會建立 run：沒有 image、沒有 Approve、沒有發版，promote 的 <code>release:</code> 標題也沒被 lint。</p>
+<p><code>workflow_dispatch</code> 是事後補加的逃生門，但它有前提：GitHub 只認預設分支上那份 workflow 檔有沒有這個觸發。修正 PR 只能進 <code>staging</code>，要等下一次 promote 才會到 <code>main</code>，所以當下用不了。放在 PR 分支的 commit 上更麻煩：三個 required check 都不會出現，而手動觸發的 run 不會回填成 PR 的 check，唯一解法是 amend 訊息再 force push。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="GH ACTIONS CL BUILD"></div><figcaption>位置：GitHub：liaooliver/notes（PR、branch protection）、GitHub Actions、commitlint.yml、ci.yml › build</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>workflow_dispatch</dt><dd>讓 workflow 可以從 Actions 頁面或 API 手動觸發。只有預設分支上的 workflow 檔有這個觸發時才能用。</dd></div><div><dt>head commit</dt><dd>push 或 PR 最新的那顆 commit。GitHub 只看它的訊息決定要不要略過。</dd></div><div><dt>no checks reported</dt><dd>gh pr checks 在一個 check 都沒有時的回覆。不是失敗訊息，最容易被誤判成還在排隊。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant D as Developer
+    participant G as GitHub
+    participant A as Actions
+    D->>G: Squash and merge liaooliver/notes#27（staging → main）
+    G->>G: 把 PR 裡每顆 commit 的訊息串成 d5fe533 的內文
+    Note over G: 其中兩顆為了講解舊設計，寫出了 skip-ci 標記
+    G->>G: push main：建立 run 之前先看 head commit 訊息
+    G--xA: ci.yml 與 commitlint.yml 都不建立 run
+    Note over A: 不是失敗：沒有 run 可以 re-run，release: 標題也沒被 lint
+    D->>G: #28 加上 workflow_dispatch（只能 PR 進 staging）
+    Note over G: main 的 ci.yml 還沒有這個觸發，手動補跑做不到
+    D->>G: #32 promote（merge commit，訊息乾淨）
+    G->>A: 正常建立 run #61
+    A-->>G: 一路跑到 release，打出 notes-v1.4.0
+    opt 標記出現在 PR 分支的 commit（liaooliver/notes#33 那一版）
+        G--xA: PR 上 3 個 required check 一個都沒出現
+        G-->>D: gh pr merge：the base branch policy prohibits the merge
+        D->>G: git commit --amend 把字串拆開，git push --force-with-lease
+    end
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="3 4 6 7" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>on:</span>
+<span>  # 手動觸發的逃生門。squash merge 會把所有 commit 訊息串成一條，</span>
+<span>  # 只要其中任何一行出現 [skip ci]（即使只是在文件裡講解這個字串），</span>
+<span>  # GitHub 就不會建立 run —— 不是失敗，是根本沒產生，沒東西可以 re-run。</span>
+<span>  # PR #27 合進 main 時就踩到了。有這一行才能手動補跑。</span>
+<span class="hl">  workflow_dispatch:</span></code></pre>
+          <p class="snip-why">ci.yml 開頭的註解把這次事故和逃生門寫在一起。</p>
+        </div>
+        <div class="snip" data-steps="11 12 13" tabindex="0">
+          <div class="snip-file">docs/use-cases.md（UC-20）</div>
+          <pre><code><span>```bash</span>
+<span class="hl">git commit --amend            # 把訊息裡那個字串拆開寫</span>
+<span class="hl">git push --force-with-lease</span>
+<span>```</span>
+<span></span>
+<span>check 立刻就跑出來。**`workflow_dispatch` 在這裡救不了** —— 手動觸發的 run 不會回填成 PR 的 required check。</span></code></pre>
+          <p class="snip-why">PR 版本的症狀與解法；workflow_dispatch 在這裡救不了。</p>
+        </div>
+      </aside></div></div>
+  
+  <div class="evidence"><b>實際發生過</b><p><code>d5fe533</code>（liaooliver/notes#27，2026-09-24 23:39）的 commit 內文第 76 行是 <code>Bump commits carry [skip ci], so no check ever runs ...</code>，來自一顆講解舊設計的 docs commit。GitHub API 列出 main 分支的 run：run #39（<code>daf7ae8</code>，09-18）之後的下一個就是 run #61（<code>30b2812</code>，09-25 01:16），中間 <code>d5fe533</code> 在 CI 和 Commit Lint 兩個 workflow 都沒有任何 run。</p>
+<p>liaooliver/notes#28 在 9 分鐘後（23:48）進 staging，commit 訊息寫著「main is protected, so the only way back was another pull request」。查 <code>d5fe533:.github/workflows/ci.yml</code> 沒有 <code>workflow_dispatch</code>，到 <code>30b2812</code> 才有。GitHub API 查 <code>event=workflow_dispatch</code> 的 run，總數是 0：這個逃生門加上之後還沒有實際用過，#27 的內容是靠 #32 的 promote 才真正跑過 pipeline 並發版。</p>
+<p>liaooliver/notes#33 是 PR 版本：一個純文件 PR 的 commit 訊息寫了那個字串，三個 required check 都沒出現，<code>gh pr checks</code> 回 <code>no checks reported</code>。amend 之後合進去的 <code>a6f8187</code> 訊息裡已經沒有它。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>commit 訊息、PR 標題、PR 內文談到這個標記時一律拆開寫，例如寫成「skip-ci 標記」。</li><li>PR 的 Checks 分頁一片空白、沒有任何紅燈，先懷疑這個，而不是以為 GitHub 還沒開始跑。</li><li>這個頁面自己的內容也引用了真實的 ci.yml 註解，把這類文字貼進 commit 訊息前要先確認。</li></ul></div>
+</article>
+
+<article class="kp" id="git-07">
+  <div class="kp-head"><span class="id">GIT-07</span><span class="where">本機 commit 訊息 › main 的歷史 › release job › @semantic-release/commit-analyzer</span></div>
+  <h2>Conventional Commits 的 type 決定下一個版號</h2>
+  <p class="tldr">發版時 commit-analyzer 逐顆讀 main 上次 tag 之後的 commit header：feat 升 minor，fix / perf 升 patch，BREAKING CHANGE 升 major，其餘不發版。取所有 commit 中最高的那一級。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>commit 訊息的 <code>type</code> 不只是格式要求，它是版號的輸入。<code>release</code> job 只在 push main 時跑，semantic-release 先找最近的 <code>notes-v*</code> tag，列出之後進入 <code>main</code> 的所有 commit，再交給 <code>commit-analyzer</code> 用預設規則逐顆判斷。</p>
+<p>判斷只看 header（第一行）：<code>feat</code> 是 minor，<code>fix</code>、<code>perf</code> 與 revert 是 patch，footer 有 <code>BREAKING CHANGE</code> 是 major。<code>docs</code>、<code>chore</code>、<code>ci</code>、<code>release</code> 都不在規則裡。GitHub 產生的 merge commit，header 是 <code>Merge pull request #N ...</code>，解析不出 type，也不會發版。最後取所有 commit 裡最高的一級。</p>
+<p>所以真正決定版號的，是功能分支進 <code>staging</code> 時留在歷史上的那幾顆 commit。用 squash 時，就是你在網頁上寫的那個標題。promote PR 標題寫 <code>release:</code> 只是為了通過 commitlint，它本身不會讓版號變動。整個 promote 如果只有 docs / chore，就不會打 tag。細節（tag 格式、只打 tag 不寫回 repo）放在 CI 頁的 release。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="DEV CL REL"></div><figcaption>位置：開發者本機（git、husky commit-msg hook）、commitlint.yml、ci.yml › release</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>commit-analyzer</dt><dd>semantic-release 的第一個 plugin，把 commit 清單換算成 major / minor / patch 或不發版。</dd></div><div><dt>header</dt><dd>commit 訊息第一行，格式 type(scope): subject。版號只看這一行與 footer。</dd></div><div><dt>BREAKING CHANGE</dt><dd>寫在 commit footer 的標記，不論 type 都會升 major。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">commit type → 版號 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"c","c":0,"r":1,"l":["main 上的 commit","上一個 tag 之後的全部"]},{"id":"hdr","c":1,"r":1,"l":["commit-analyzer","逐顆讀 header"],"shape":"diamond"},{"id":"feat","c":2,"r":0,"l":["feat","minor"]},{"id":"fix","c":2,"r":1,"l":["fix / perf / revert","patch"]},{"id":"brk","c":2,"r":2,"l":["BREAKING CHANGE","major"]},{"id":"none","c":2,"r":3,"l":["docs · chore · ci · release","Merge pull request… 也算這類"]},{"id":"tag","c":3,"r":1,"l":["取最高一級","tag notes-vX.Y.Z"]},{"id":"no","c":3,"r":3,"l":["全部都是這類","不打 tag"]}],"edges":[{"id":"e1","from":"c","to":"hdr"},{"id":"e2","from":"hdr","to":"feat"},{"id":"e3","from":"hdr","to":"fix"},{"id":"e4","from":"hdr","to":"brk"},{"id":"e5","from":"hdr","to":"none","dashed":true},{"id":"e6","from":"feat","to":"tag"},{"id":"e7","from":"fix","to":"tag"},{"id":"e8","from":"brk","to":"tag"},{"id":"e9","from":"none","to":"no","dashed":true}],"steps":[{"n":["c"],"e":[],"t":"release job 找到上一個 tag，列出之後進 main 的 commit"},{"n":["hdr"],"e":["e1"],"t":"每顆只解析 header；Merge pull request 開頭的讀不到 type"},{"n":["none"],"e":["e5"],"t":"docs、chore、ci、release 不在規則裡，這顆不影響版號"},{"n":["fix"],"e":["e3"],"t":"fix、perf、revert 對應 patch"},{"n":["feat"],"e":["e2"],"t":"feat 對應 minor：05e38e5 feat(api) 讓 1.4.0 變 1.5.0"},{"n":["brk"],"e":["e4"],"t":"footer 有 BREAKING CHANGE 就是 major，不管 type 是什麼"},{"n":["tag"],"e":["e6","e7","e8"],"t":"取所有 commit 中最高的一級，打 tag、發 Release"},{"n":["no"],"e":["e9"],"t":"promote 裡全是 docs / chore：no release，不打 tag"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="2 3 4 5" tabindex="0">
+          <div class="snip-file">node_modules/@semantic-release/commit-analyzer/lib/default-release-rules.js（13.0.1）</div>
+          <pre><code><span>export default [</span>
+<span class="hl">  { breaking: true, release: "major" },</span>
+<span class="hl">  { revert: true, release: "patch" },</span>
+<span>  // Angular</span>
+<span class="hl">  { type: "feat", release: "minor" },</span>
+<span class="hl">  { type: "fix", release: "patch" },</span>
+<span class="hl">  { type: "perf", release: "patch" },</span></code></pre>
+          <p class="snip-why">.releaserc.json 沒有自訂 releaseRules，所以用的就是這份預設。</p>
+        </div>
+        <div class="snip" data-steps="0 6" tabindex="0">
+          <div class="snip-file">.releaserc.json</div>
+          <pre><code><span>{</span>
+<span class="hl">  "branches": ["main"],</span>
+<span class="hl">  "tagFormat": "notes-v${version}",</span>
+<span>  "plugins": [</span>
+<span class="hl">    "@semantic-release/commit-analyzer",</span>
+<span>    "@semantic-release/release-notes-generator",</span>
+<span>    "@semantic-release/github"</span>
+<span>  ]</span>
+<span>}</span></code></pre>
+          <p class="snip-why">只在 main 發版；tag 前綴 notes-v。commit-analyzer 排第一個。</p>
+        </div>
+        <div class="snip" data-steps="0" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>  release:</span>
+<span>    name: Semantic Release</span>
+<span>    needs: bump-production</span>
+<span>    runs-on: ubuntu-latest</span>
+<span class="hl">    if: github.event_name == 'push' &amp;&amp; github.ref == 'refs/heads/main'</span></code></pre>
+          <p class="snip-why">版號只會在 push main 那次 run 的最後一步被算出來。</p>
+        </div>
+      </aside></div></div>
+  
+  <div class="evidence"><b>實際發生過</b><p><b>run #67</b>（liaooliver/notes#35 promote，2026-09-25）的 <code>Run semantic-release</code> log：</p>
+<p><code>Found git tag notes-v1.4.0 associated with version 1.4.0 on branch main</code><br/><code>Found 4 commits since last release</code><br/><code>Analyzing commit: Merge pull request #35 from liaooliver/staging</code> → <code>should not trigger a release</code><br/><code>Analyzing commit: Merge pull request #34 from liaooliver/feat/notes-api</code> → <code>should not trigger a release</code><br/><code>Analyzing commit: feat(api): add an Express API workspace ...</code> → <code>The release type for the commit is minor</code><br/><code>The next release version is 1.5.0</code> → <code>Created tag notes-v1.5.0</code></p>
+<p>#34 的 merge commit 內文雖然寫著 <code>feat(api): ...</code>，但 header 是 Merge pull request，所以被略過；真正升版的是 #34 用 merge commit 保留下來的分支 commit <code>05e38e5</code>。</p>
+<p><b>run #79</b>（liaooliver/notes#41 promote，5 筆 docs / chore / ci）：<code>Analysis of 6 commits complete: no release</code>、<code>There are no relevant changes, so no new version is released.</code> <code>git ls-remote --tags</code> 確認最新 tag 仍是 <code>notes-v1.5.0</code>，#41 與 #44 兩次 promote 都沒有打 tag。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>promote 標題的 release: 不會觸發發版，它只是為了讓 commitlint 放行。</li><li>squash 時在網頁上把 feat 改成 chore（或反過來），版號就跟著變，這一步沒有任何本機 hook 把關。</li><li>package.json 的 version 停在 1.2.1 是刻意的：已不寫回 repo，版號以 tag 與 GitHub Releases 為準。</li></ul></div>
+</article>
+    <nav class="pager" aria-label="上一頁與下一頁">
+      <a href="index.html"><small>上一層</small><span>總覽</span></a>
+      <a class="next" href="ci.html"><small>下一層</small><span>CI 與發版</span></a>
+    </nav>
+  </main>
+</div>
+<script type="application/json" id="arch-data">{"size":{"w":1360,"h":660},"clusters":[{"id":"LOCAL","x":10,"y":118,"w":150,"h":90,"label":"本機 Mac"},{"id":"GHC","x":180,"y":118,"w":150,"h":90,"label":"github.com"},{"id":"ACTIONS","x":366,"y":20,"w":808,"h":290,"label":"GitHub Actions · notes","right":true},{"id":"DEPLOYC","x":366,"y":356,"w":318,"h":84,"label":"notes-deploy repo"},{"id":"K3S","x":186,"y":440,"w":870,"h":210,"label":"k3s · Multipass VM","right":true,"bottom":true},{"id":"NS_S","x":385,"y":452,"w":290,"h":82,"label":"ns notes-staging"},{"id":"NS_P","x":725,"y":452,"w":290,"h":82,"label":"ns notes-production"}],"nodes":[{"id":"DEV","x":20,"y":140,"l":["開發者","git · husky"]},{"id":"GH","x":190,"y":140,"l":["notes repo","branch protection"]},{"id":"CL","x":380,"y":50,"l":["commitlint.yml","訊息規範"]},{"id":"LLM","x":540,"y":50,"l":["llm-pr-assist.yml","PR 留言"]},{"id":"GEM","x":1210,"y":50,"l":["Gemini API","generateContent"]},{"id":"BUILD","x":380,"y":140,"l":["build","test · build"]},{"id":"WB","x":540,"y":140,"l":["white-box","Semgrep · Trivy fs"]},{"id":"DOCKER","x":700,"y":140,"l":["docker ×2","buildx · Trivy image"]},{"id":"GHCR","x":1210,"y":140,"l":["GHCR","notes · notes-api"]},{"id":"BS","x":540,"y":240,"l":["bump-staging","自動"]},{"id":"ENV","x":700,"y":232,"w":130,"h":62,"shape":"diamond","l":["production","人工 Approve"]},{"id":"BP","x":870,"y":240,"l":["bump-production","Approve 之後"]},{"id":"REL","x":1030,"y":240,"l":["release","semantic-release"]},{"id":"MC","x":380,"y":380,"l":["manifest-check","kustomize build"]},{"id":"DEPLOY","x":540,"y":380,"l":["notes-deploy","base · overlays"]},{"id":"ARGO","x":200,"y":478,"l":["Argo CD","Application ×2"]},{"id":"WEB_S","x":395,"y":478,"l":["notes-web","nginx + Vue"]},{"id":"API_S","x":535,"y":478,"l":["notes-api","Express :3000"]},{"id":"WEB_P","x":735,"y":478,"l":["notes-web","nginx + Vue"]},{"id":"API_P","x":875,"y":478,"l":["notes-api","Express :3000"]},{"id":"TRA","x":700,"y":590,"l":["Traefik","Ingress 分流"]},{"id":"BROWSER","x":1210,"y":590,"l":["瀏覽器","notes.local"]}],"edges":[{"id":"e_dev_gh","pts":[[150,163],[190,163]],"label":"push","lx":170,"ly":155},{"id":"e_gh_cl","pts":[[255,140],[255,73],[380,73]],"label":"PR / push","lx":318,"ly":67},{"id":"e_gh_llm","pts":[[285,140],[285,34],[605,34],[605,50]],"label":"PR","lx":440,"ly":30},{"id":"e_llm_gem","pts":[[670,73],[1210,73]],"label":"prompt → 建議文字","lx":940,"ly":67},{"id":"e_gh_build","pts":[[320,163],[380,163]]},{"id":"e_build_wb","pts":[[510,163],[540,163]]},{"id":"e_wb_docker","pts":[[670,163],[700,163]]},{"id":"e_docker_ghcr","pts":[[830,163],[1210,163]],"label":"push :sha-\u003ccommit>","lx":1020,"ly":155},{"id":"e_docker_bs","pts":[[740,186],[740,212],[605,212],[605,240]],"label":"staging","lx":672,"ly":207},{"id":"e_docker_env","pts":[[765,186],[765,232]],"label":"main","lx":771,"ly":214,"anchor":"start"},{"id":"e_env_bp","pts":[[830,263],[870,263]]},{"id":"e_bp_rel","pts":[[1000,263],[1030,263]]},{"id":"e_rel_gh","pts":[[1095,286],[1095,322],[230,322],[230,186]],"dashed":true,"label":"tag + GitHub Release","lx":1010,"ly":316},{"id":"e_bs_deploy","pts":[[605,286],[605,380]],"label":"deploy key","lx":611,"ly":342,"anchor":"start"},{"id":"e_bp_deploy","pts":[[935,286],[935,348],[645,348],[645,380]],"label":"deploy key","lx":800,"ly":342},{"id":"e_deploy_mc","pts":[[540,403],[510,403]]},{"id":"e_deploy_argo","pts":[[560,426],[560,446],[265,446],[265,478]],"dashed":true,"label":"polling","lx":330,"ly":441},{"id":"e_argo_s","pts":[[330,501],[385,501]],"label":"sync","lx":357,"ly":494},{"id":"e_argo_p","pts":[[265,524],[265,562],[990,562],[990,534]],"label":"sync","lx":900,"ly":557},{"id":"e_ghcr_pull","pts":[[1275,186],[1275,493],[1056,493]],"dashed":true,"label":"image pull","lx":1165,"ly":487},{"id":"e_br_tra","pts":[[1210,613],[830,613]],"label":"Host: notes.local","lx":1020,"ly":606},{"id":"e_tra_s","pts":[[700,613],[530,613],[530,534]],"label":"notes-staging.local","lx":615,"ly":606},{"id":"e_tra_p","pts":[[790,590],[790,534]],"label":"notes.local","lx":796,"ly":580,"anchor":"start"}],"scenarios":[{"id":"s1","label":"開 PR 到 staging","steps":[{"n":["DEV","GH"],"e":["e_dev_gh"],"t":"開發者 push feature/* 分支，在 GitHub 開 PR，base 選 staging"},{"n":["CL"],"e":["e_gh_cl"],"t":"commitlint.yml：逐一檢查 PR 裡每個 commit 的訊息格式"},{"n":["LLM","GEM"],"e":["e_gh_llm","e_llm_gem"],"t":"llm-pr-assist.yml：三個 job 平行呼叫 Gemini，結果貼成 PR 留言（不是 required）"},{"n":["BUILD"],"e":["e_gh_build"],"t":"ci.yml build：npm ci → npm test → npm run build，上傳 dist"},{"n":["WB"],"e":["e_build_wb"],"t":"white-box：Semgrep + Trivy fs，CRITICAL/HIGH 直接讓 job 失敗"},{"n":["GH"],"e":[],"t":"三個 required checks 綠燈，Merge 按鈕才可用；PR 事件不會 build image、不會部署"}]},{"id":"s2","label":"merge 進 staging → k3s 換版","steps":[{"n":["GH"],"e":[],"t":"merge 之後 GitHub 發出 push staging 事件，ci.yml 在合併後的程式碼上重跑"},{"n":["BUILD","WB"],"e":["e_gh_build","e_build_wb"],"t":"build + white-box 再跑一次：image 必須從合併後的程式碼產生"},{"n":["DOCKER"],"e":["e_wb_docker"],"t":"docker matrix：web 與 api 兩個分身各自 buildx，產出 amd64 + arm64"},{"n":["GHCR"],"e":["e_docker_ghcr"],"t":"push ghcr.io/liaooliver/notes:sha-\u003c40 碼>，接著用 Trivy 掃剛推上去的 image"},{"n":["BS"],"e":["e_docker_bs"],"t":"bump-staging：確認 staging 沒前進，kustomize edit set image 改 overlays/staging"},{"n":["DEPLOY","MC"],"e":["e_bs_deploy","e_deploy_mc"],"t":"用 deploy key push 進 notes-deploy main；那邊的 manifest-check 驗一次 kustomize build"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 輪詢到 notes-deploy 的新 commit，notes-staging 變成 OutOfSync"},{"n":["ARGO","NS_S","WEB_S","API_S"],"e":["e_argo_s"],"t":"automated sync：apply 新的 Deployment，controller 開始 rolling update"},{"n":["GHCR","K3S"],"e":["e_ghcr_pull"],"t":"kubelet 依 image tag 從 GHCR 拉 arm64 那一層；新 Pod 通過 readinessProbe 才接流量"},{"n":["BROWSER","TRA","NS_S"],"e":["e_br_tra","e_tra_s"],"t":"瀏覽器打 notes-staging.local，Traefik 依 Host 與路徑分流到 staging 的 Service"}]},{"id":"s3","label":"staging → main + Approve","steps":[{"n":["GH"],"e":[],"t":"開 PR staging → main，跑一樣的 PR 檢查；用 merge commit 合併，發出 push main"},{"n":["BUILD","WB"],"e":["e_gh_build","e_build_wb"],"t":"build + white-box 在 main 的 commit 上再跑一次"},{"n":["DOCKER","GHCR"],"e":["e_wb_docker","e_docker_ghcr"],"t":"依 main 的 commit SHA 重新 build、push 一組 image"},{"n":["ENV"],"e":["e_docker_env"],"t":"bump-production 綁了 environment: production，run 停在 Waiting"},{"n":["ENV"],"e":[],"t":"Reviewer 在 run 頁面按 Review deployments → Approve and deploy"},{"n":["BP"],"e":["e_env_bp"],"t":"bump-production：再確認 main 沒前進，改 overlays/production 的 image tag"},{"n":["DEPLOY"],"e":["e_bp_deploy"],"t":"用 deploy key push 進 notes-deploy main"},{"n":["REL","GH"],"e":["e_bp_rel","e_rel_gh"],"t":"release：semantic-release 分析 commit、算版號、打 tag、開 GitHub Release"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 輪詢到 overlays/production 變了，notes-production 變成 OutOfSync"},{"n":["ARGO","NS_P","WEB_P","API_P"],"e":["e_argo_p"],"t":"automated sync → rolling update；人工閘只有上游那一道 Approve"},{"n":["BROWSER","TRA","NS_P"],"e":["e_br_tra","e_tra_p"],"t":"瀏覽器打 notes.local，流量進到 production"}]},{"id":"s4","label":"production 回滾","steps":[{"n":["DEV","DEPLOY"],"e":[],"t":"在 notes-deploy git revert 那個 bump commit 並 push（這個 repo 不設保護，不用 PR）"},{"n":["MC"],"e":["e_deploy_mc"],"t":"manifest-check 驗 kustomize build 還算得出來"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 發現 image tag 變回舊值，notes-production 變成 OutOfSync"},{"n":["ARGO","NS_P","WEB_P","API_P"],"e":["e_argo_p"],"t":"sync 後 rolling update 回舊版；舊 image 還在 GHCR，不用重新 build"},{"n":["NS_P"],"e":[],"t":"直接 kubectl rollout undo 沒用：selfHeal 會把 cluster 改回 Git 裡寫的版本"}]}],"names":{"DEV":"開發者本機（git、husky commit-msg hook）","GH":"GitHub：liaooliver/notes（PR、branch protection）","ACTIONS":"GitHub Actions","CL":"commitlint.yml","LLM":"llm-pr-assist.yml","GEM":"Gemini API","BUILD":"ci.yml › build","WB":"ci.yml › white-box","DOCKER":"ci.yml › docker（matrix web / api）","GHCR":"GHCR：ghcr.io/liaooliver/notes、notes-api","BS":"ci.yml › bump-staging","ENV":"GitHub Environment：production","BP":"ci.yml › bump-production","REL":"ci.yml › release","MC":"notes-deploy › manifest-check.yml","DEPLOY":"liaooliver/notes-deploy","DEPLOYC":"liaooliver/notes-deploy","K3S":"k3s cluster（Multipass VM）","ARGO":"Argo CD","NS_S":"namespace notes-staging","NS_P":"namespace notes-production","WEB_S":"notes-staging › notes-web","API_S":"notes-staging › notes-api","WEB_P":"notes-production › notes-web","API_P":"notes-production › notes-api","TRA":"Traefik（k3s 內建 Ingress controller）","BROWSER":"Mac 上的瀏覽器","LOCAL":"開發者本機","GHC":"github.com"}}</script>
+<script src="seqviz.js"></script>
+<script src="archviz.js"></script>
+<script>
+(function () {
+  var A = JSON.parse(document.getElementById('arch-data').textContent);
+  SeqViz.mountAll('.seq');
+  document.querySelectorAll('.flowx').forEach(ArchViz.mountFlow);
+  document.querySelectorAll('.mini-slot').forEach(function (m) {
+    var ids = m.dataset.ids.split(' ');
+    ArchViz.mountMini(m, A, ids, 'index.html#node-' + ids[0]);
+  });
+  document.querySelectorAll('.viz-row').forEach(function (row) {
+    var viz = row.querySelector('.seq, .flowx'), panel = row.querySelector('.code-panel');
+    if (!viz || !panel) return;
+    var snips = Array.prototype.slice.call(panel.querySelectorAll('.snip'));
+    snips.forEach(function (s) { s.steps = s.dataset.steps.split(' ').map(Number); });
+    viz.addEventListener('seqstep', function (e) {
+      var k = e.detail.step, first = null;
+      snips.forEach(function (s) {
+        var hit = k >= 0 && s.steps.indexOf(k) !== -1;
+        s.classList.toggle('cur', hit);
+        s.classList.toggle('dim', k >= 0 && !hit);
+        if (hit && !first) first = s;
+      });
+      if (first) {
+        var top = first.offsetTop - panel.offsetTop - 8;
+        if (top < panel.scrollTop || top + first.offsetHeight > panel.scrollTop + panel.clientHeight) panel.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+    });
+    snips.forEach(function (s) {
+      var jump = function () { if (viz.seqviz) { viz.seqviz.stop(); viz.seqviz.set(s.steps[0]); } };
+      s.addEventListener('click', jump);
+      s.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); } });
+    });
+  });
+  var links = document.querySelectorAll('#nav-list a');
+  if ('IntersectionObserver' in window && links.length) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + en.target.id); });
+      });
+    }, { rootMargin: '-30% 0px -60% 0px' });
+    document.querySelectorAll('.kp').forEach(function (el) { io.observe(el); });
+  }
+})();
+</script>

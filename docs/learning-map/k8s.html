@@ -1,0 +1,1388 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Notes 架構地圖 · k8s runtime</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  /* 單一主題：低亮度墨綠底、灰綠字，刻意不做亮色版 */
+  :root {
+    --ground: #33423a;
+    --surface: #3a4a41;
+    --surface-2: #2c3a32;
+    --ink: #e3e7df;
+    --ink-2: #c4ccc1;
+    --ink-3: #97a49a;
+    --line: #52625a;
+    --line-strong: #7b8c82;
+    --accent: #a9c9b4;
+    --pass: #a5cfae;
+    --wait: #d8bb78;
+    --fail: #dc9d8d;
+    --code-bg: #2a3730;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  code, .mono {
+    font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: .88em;
+  }
+  code {
+    background: var(--code-bg);
+    padding: .05em .3em;
+    color: var(--ink);
+  }
+  a { color: var(--ink); text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--ink); }
+  h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.25; font-weight: 600; }
+
+  .topbar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 20;
+    background: var(--ground);
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .topbar-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 10px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 18px;
+  }
+  .brand { font-weight: 600; font-size: 14px; }
+  .brand small { color: var(--ink-3); font-weight: 400; margin-left: 8px; font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 0 4px; margin-left: auto; }
+  .chip {
+    border: 0;
+    background: none;
+    color: var(--ink-3);
+    padding: 2px 8px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 1.6;
+    border-bottom: 2px solid transparent;
+  }
+  .chip:hover { color: var(--ink); }
+  .chip[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .chip:focus-visible, .nav a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 30px 20px 80px;
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 40px;
+  }
+  .nav {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 62px);
+    align-self: start;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+    font-size: 13px;
+    border-right: 1px solid var(--line);
+    padding-right: 14px;
+  }
+  .nav h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-3);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .nav ol { list-style: none; margin: 0 0 18px; padding: 0; }
+  .nav a {
+    display: grid;
+    grid-template-columns: 46px 1fr;
+    gap: 6px;
+    padding: 3px 0 3px 8px;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+  }
+  .nav a .id { color: var(--ink-3); font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .nav a:hover { color: var(--ink); }
+  .nav a.active { border-left-color: var(--ink); color: var(--ink); }
+  .nav li[hidden] { display: none; }
+
+  .main { min-width: 0; }
+  .intro h1 { font-size: 28px; }
+  .intro .lede { color: var(--ink-2); max-width: 62ch; margin: 12px 0 0; }
+  .flow {
+    margin: 24px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .flow .node { border: 1px solid var(--line-strong); padding: 2px 10px; }
+  .flow .node.gate { border-color: var(--ink); border-width: 1.5px; }
+  .flow .arrow { color: var(--ink-3); }
+
+  .legend {
+    margin: 24px 0 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 4px 24px;
+    font-size: 13px;
+  }
+  .legend div { display: flex; gap: 10px; }
+  .legend b { font-weight: 600; min-width: 112px; }
+  .legend span { color: var(--ink-2); }
+
+  .overview { margin-top: 40px; }
+  .overview h2, .cases-heading, .issues h2, .files h2 { font-size: 18px; margin-bottom: 10px; }
+  .table-wrap { overflow-x: auto; border-top: 1px solid var(--line-strong); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 700px; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 500; color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; }
+  tbody tr[hidden] { display: none; }
+  td .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); font-size: 12.5px; }
+  td a { text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+
+  /* 結果標記：一個小方塊 + 文字，不做底色藥丸 */
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+  .pill::before { content: ""; width: 8px; height: 8px; display: inline-block; background: currentColor; }
+  .pill.pass { color: var(--pass); }
+  .pill.wait { color: var(--wait); }
+  .pill.fail { color: var(--fail); }
+  .pill.none { color: var(--ink-3); }
+
+  .cases { margin-top: 40px; }
+  .case {
+    border-top: 1px solid var(--line-strong);
+    padding: 22px 0 34px;
+    scroll-margin-top: 80px;
+  }
+  .case[hidden] { display: none; }
+  .case-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 6px; font-size: 12.5px; }
+  .case-head .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); }
+  .case-head .stage { text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); font-size: 11.5px; }
+  .case-head .pill { margin-left: auto; }
+  .case h2 { font-size: 20px; }
+  .story { margin: 16px 0 0; display: grid; gap: 12px; }
+  .story > div { display: grid; grid-template-columns: 80px 1fr; gap: 12px; }
+  .story dt {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    padding-top: 5px;
+  }
+  .story dd { margin: 0; max-width: 72ch; }
+  .story ol, .story ul { margin: 2px 0 0; padding-left: 20px; }
+  .story li { margin: 2px 0; }
+  .story li ul { padding-left: 18px; }
+  .story dd.result { font-weight: 500; }
+
+  .evidence {
+    margin: 18px 0 0;
+    padding: 10px 0 10px 14px;
+    border-left: 2px solid var(--line-strong);
+    font-size: 14px;
+    max-width: 78ch;
+    color: var(--ink-2);
+  }
+  .evidence b { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 2px; font-weight: 500; }
+
+  .diagram {
+    margin: 22px 0 0;
+    border-top: 1px solid var(--line);
+    overflow-x: auto;
+    padding: 10px 0 0;
+  }
+  .diagram-label {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    padding-bottom: 4px;
+  }
+
+  .issues { margin-top: 40px; border-top: 1px solid var(--line-strong); padding-top: 20px; }
+  .issues ul { margin: 0; padding-left: 20px; max-width: 78ch; color: var(--ink-2); }
+  .issues li { margin: 6px 0; }
+  .files { margin-top: 36px; }
+  .files table { min-width: 520px; }
+  .empty { display: none; color: var(--ink-3); padding: 30px 0; }
+  .empty.show { display: block; }
+
+  @media (max-width: 860px) {
+    .page { grid-template-columns: 1fr; gap: 20px; }
+    .nav { position: static; max-height: none; border-right: 0; padding-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+    .nav ol { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+    .nav a { grid-template-columns: auto; padding: 2px 0; border-left: 0; }
+    .nav a.active { text-decoration: underline; }
+    .nav a .label { display: none; }
+    .story > div { grid-template-columns: 1fr; gap: 2px; }
+    .case-head .pill { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+
+  /* 互動圖表：控制列與 SVG 樣式（seqviz.js / 流程圖共用） */
+  .viz-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0 4px; font-size: 13px; }
+  .viz-ctl button, .viz-scn button {
+    border: 1px solid var(--line-strong); background: none; color: var(--ink);
+    font: inherit; font-size: 12.5px; padding: 2px 10px; cursor: pointer; line-height: 1.6;
+  }
+  .viz-ctl button:hover, .viz-scn button:hover { border-color: var(--ink); }
+  .viz-ctl button:disabled { opacity: .35; cursor: default; }
+  .viz-ctl button:focus-visible, .viz-scn button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .viz-count { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 56px; font-size: 12.5px; }
+  .viz-range { flex: 1 1 160px; min-width: 120px; accent-color: var(--accent); }
+  .viz-caption { font-size: 13.5px; color: var(--ink); min-height: 1.6em; margin: 2px 0 10px; font-weight: 500; max-width: 80ch; }
+  .viz-svg { overflow-x: auto; padding-bottom: 6px; }
+  .viz-scn { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+  .viz-scn button[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .seq:focus-visible, .flow-viz:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+
+  .seq-svg text, .flow-svg text { font-family: "IBM Plex Sans", "Noto Sans TC", "PingFang TC", sans-serif; font-size: 13px; fill: var(--ink-2); }
+  .seq-svg .head rect { fill: var(--surface-2); stroke: var(--line-strong); }
+  .seq-svg .head rect.actor { stroke-dasharray: 3 2; }
+  .seq-svg .head text { fill: var(--ink); font-weight: 500; }
+  .seq-svg .head.cur rect { fill: var(--accent); stroke: var(--accent); }
+  .seq-svg .head.cur text { fill: var(--ground); font-weight: 600; }
+  .seq-svg .life { stroke: var(--line); stroke-dasharray: 4 4; }
+  .seq-svg .life.cur { stroke: var(--accent); stroke-dasharray: none; }
+  .seq-svg .msg-line { stroke: var(--ink-2); stroke-width: 1.2; fill: none; }
+  .seq-svg .msg-line.dashed { stroke-dasharray: 5 4; }
+  .seq-svg .ah { fill: var(--ink-2); }
+  .seq-svg .ah-open, .seq-svg .ah-x { stroke: var(--ink-2); fill: none; stroke-width: 1.2; }
+  .seq-svg .row.cur .msg-line, .seq-svg .row.cur .ah-open, .seq-svg .row.cur .ah-x { stroke: var(--accent); stroke-width: 2; }
+  .seq-svg .row.cur .ah { fill: var(--accent); }
+  .seq-svg .row.cur text { fill: var(--ink); font-weight: 600; }
+  .seq-svg .row.future { opacity: .14; }
+  .seq-svg .row.done { opacity: .55; }
+  .seq-svg .note-rect { fill: var(--surface); stroke: var(--line-strong); }
+  .seq-svg .row.cur .note-rect { stroke: var(--accent); stroke-width: 1.5; }
+  .seq-svg .note-text { fill: var(--ink-2); }
+  .seq-svg .frame-rect { fill: none; stroke: var(--line-strong); stroke-dasharray: 2 3; }
+  .seq-svg .frame.cur .frame-rect { stroke: var(--accent); stroke-dasharray: none; }
+  .seq-svg .frame-kind { font-size: 11.5px; fill: var(--ink); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .seq-svg .frame-label { font-size: 12px; fill: var(--ink-3); }
+  .seq-svg .sep-line { stroke: var(--line-strong); stroke-dasharray: 4 3; }
+  .seq-svg .row.msg, .seq-svg .row.self, .seq-svg .row.note { cursor: pointer; }
+
+  .flow-svg { display: block; min-width: 900px; width: 100%; height: auto; }
+  .flow-svg .node rect, .flow-svg .node polygon { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1; }
+  .flow-svg .node text { fill: var(--ink); font-size: 12.5px; }
+  .flow-svg .node .sub { fill: var(--ink-3); font-size: 11.5px; }
+  .flow-svg .node.cur rect, .flow-svg .node.cur polygon { fill: var(--accent); stroke: var(--accent); }
+  .flow-svg .node.cur text { fill: var(--ground); font-weight: 600; }
+  .flow-svg .node.done rect, .flow-svg .node.done polygon { stroke: var(--accent); }
+  .flow-svg .node.off { opacity: .28; }
+  .flow-svg .edge path { fill: none; stroke: var(--ink-2); stroke-width: 1.2; }
+  .flow-svg .edge.dashed path { stroke-dasharray: 5 4; }
+  .flow-svg .edge .ah { fill: var(--ink-2); }
+  .flow-svg .edge text { font-size: 11.5px; fill: var(--ink-3); }
+  .flow-svg .edge.cur path { stroke: var(--accent); stroke-width: 2.2; }
+  .flow-svg .edge.cur .ah { fill: var(--accent); }
+  .flow-svg .edge.cur text { fill: var(--ink); font-weight: 600; }
+  .flow-svg .edge.done path { stroke: var(--accent); opacity: .7; }
+  .flow-svg .edge.done .ah { fill: var(--accent); }
+  .flow-svg .edge.off { opacity: .22; }
+  .flow-svg .cluster rect { fill: none; stroke: var(--line); stroke-dasharray: 3 3; }
+  .flow-svg .cluster text { fill: var(--ink-3); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; }
+  @media (prefers-reduced-motion: no-preference) {
+    .seq-svg .row, .seq-svg .head rect, .flow-svg .node, .flow-svg .edge, .flow-svg .node rect, .flow-svg .node polygon { transition: opacity .25s, fill .25s, stroke .25s; }
+  }
+
+  /* 時序圖 + 右側對照程式碼 */
+  .page { max-width: 1360px; grid-template-columns: 190px minmax(0, 1fr); }
+  .viz-row { display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 22px; align-items: start; }
+  .code-panel {
+    position: sticky; top: calc(env(safe-area-inset-top, 0px) + 60px);
+    max-height: calc(100vh - 80px); overflow-y: auto;
+    border-left: 1px solid var(--line); padding-left: 14px; font-size: 12.5px;
+  }
+  .snip-head { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 8px; }
+  .snip { border-left: 2px solid transparent; padding: 6px 0 6px 10px; margin: 0 0 10px -12px; cursor: pointer; transition: opacity .2s, border-color .2s; }
+  .snip:hover { border-left-color: var(--line-strong); }
+  .snip:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .snip.cur { border-left-color: var(--accent); }
+  .snip.dim { opacity: .38; }
+  .snip-file { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--ink-3); margin-bottom: 4px; }
+  .snip.cur .snip-file { color: var(--accent); }
+  .snip pre { margin: 0; padding: 8px 10px; background: var(--code-bg); overflow-x: auto; font-family: "IBM Plex Mono", monospace; font-size: 11.5px; line-height: 1.55; color: var(--ink-2); }
+  .snip pre code { background: none; padding: 0; font-size: inherit; }
+  .snip pre .hl { display: inline-block; width: 100%; color: var(--ink); }
+  .snip.cur pre .hl { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: -10px 0 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+  .snip-why { margin: 6px 0 0; color: var(--ink-2); line-height: 1.55; }
+  .snip.cur .snip-why { color: var(--ink); }
+  @media (max-width: 1100px) {
+    .viz-row { grid-template-columns: 1fr; }
+    .code-panel { position: static; max-height: none; border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 10px; }
+  }
+
+
+
+  /* ---------- 架構學習地圖：在 scenario-atlas 主題上加的部分 ---------- */
+  .tabs { display: flex; flex-wrap: wrap; gap: 0 2px; margin-left: auto; }
+  .tabs a {
+    color: var(--ink-3); text-decoration: none; font-size: 13px; padding: 2px 9px;
+    border-bottom: 2px solid transparent; line-height: 1.6;
+  }
+  .tabs a:hover { color: var(--ink); }
+  .tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .tabs a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .eyebrow { font-size: 11.5px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); margin-bottom: 8px; }
+  .intro-grid { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 28px; align-items: start; }
+
+  /* 總架構圖 */
+  .arch-wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 22px; }
+  .arch-svg { min-width: 1080px; }
+  .flow-svg .lbg { fill: var(--ground); }
+  .flow-svg .edge .lbg { fill: var(--ground); stroke: none; }
+  .arch-svg .cluster[data-id="NS_S"] rect, .arch-svg .cluster[data-id="NS_P"] rect { stroke: var(--line-strong); }
+  .arch-svg .has-kp { cursor: pointer; }
+  .arch-svg .node.has-kp:hover rect, .arch-svg .node.has-kp:hover polygon { stroke: var(--ink); }
+  .arch-svg .cluster.has-kp:hover rect { stroke: var(--ink-2); }
+  .arch-svg .has-kp:focus-visible { outline: 2px solid var(--ink); }
+  .arch-svg .node.sel rect, .arch-svg .node.sel polygon { stroke: var(--wait); stroke-width: 2.5; }
+  .arch-svg .cluster.sel rect { stroke: var(--wait); stroke-width: 2; stroke-dasharray: none; }
+  .flow-svg .cluster.cur rect { stroke: var(--accent); stroke-dasharray: none; stroke-width: 1.6; }
+  .flow-svg .cluster.done rect { stroke: var(--accent); }
+
+  .node-panel { border-top: 1px solid var(--line-strong); padding-top: 12px; font-size: 13.5px; min-height: 180px; }
+  .node-panel .hint { color: var(--ink-3); font-size: 12.5px; margin: 0 0 10px; }
+  .np-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+  .np-id { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--wait); letter-spacing: .06em; }
+  .np-head b { font-weight: 600; font-size: 15px; line-height: 1.4; }
+  .np-empty { color: var(--ink-3); }
+  .np-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 14px 28px; }
+  .np-list a { display: grid; grid-template-columns: 58px 1fr; gap: 0 8px; text-decoration: none; }
+  .np-list a:hover .np-t { text-decoration: underline; }
+  .np-kp { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+  .np-t { font-weight: 500; }
+  .np-pg { grid-column: 2; font-size: 11.5px; color: var(--ink-3); }
+  .np-list p { margin: 3px 0 0 66px; color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
+
+  /* mini-map */
+  .mini { margin: 0; }
+  .mini-link { display: block; border: 1px solid var(--line); padding: 6px; background: var(--surface-2); }
+  .mini-link:hover { border-color: var(--line-strong); }
+  .mini-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .arch-mini { display: block; width: 100%; height: auto; min-width: 0; }
+  .arch-mini text { display: none; }
+  .arch-mini .edge path { stroke: var(--line-strong); stroke-width: 3; }
+  .arch-mini .edge .ah { fill: var(--line-strong); }
+  .arch-mini .edge .lbg { display: none; }
+  .arch-mini .node rect, .arch-mini .node polygon { fill: var(--surface); stroke: var(--line-strong); stroke-width: 2; }
+  .arch-mini .cluster rect { stroke: var(--line-strong); stroke-width: 2; }
+  .arch-mini .cluster text { display: block; font-size: 26px; fill: var(--ink-3); }
+  .arch-mini .cluster[data-id="NS_S"] text, .arch-mini .cluster[data-id="NS_P"] text,
+  .arch-mini .cluster[data-id="LOCAL"] text, .arch-mini .cluster[data-id="GHC"] text { display: none; }
+  .arch-mini .node.hit rect, .arch-mini .node.hit polygon { fill: var(--accent); stroke: var(--accent); }
+  .arch-mini .cluster.hit rect { stroke: var(--accent); stroke-width: 5; stroke-dasharray: none; fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .mini figcaption { font-size: 12px; color: var(--ink-3); margin-top: 6px; font-family: "IBM Plex Mono", monospace; line-height: 1.5; }
+
+  /* 知識點 */
+  .kp { border-top: 1px solid var(--line-strong); padding: 26px 0 40px; scroll-margin-top: 70px; }
+  .kp-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 12.5px; margin-bottom: 6px; }
+  .kp-head .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); }
+  .kp-head .where { font-family: "IBM Plex Mono", monospace; color: var(--accent); font-size: 12px; }
+  .kp h2 { font-size: 21px; }
+  .kp .tldr { margin: 10px 0 0; font-size: 15.5px; color: var(--ink); max-width: 70ch; font-weight: 500; }
+  .kp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; margin-top: 16px; align-items: start; }
+  .kp-body { max-width: 70ch; color: var(--ink-2); }
+  .kp-body p { margin: 0 0 12px; }
+  .kp-body ul, .kp-body ol { margin: 0 0 12px; padding-left: 20px; }
+  .kp-body li { margin: 3px 0; }
+  .kp-body b { color: var(--ink); font-weight: 600; }
+  .terms { margin: 18px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 8px 28px; font-size: 13.5px; }
+  .terms div { display: grid; grid-template-columns: minmax(96px, auto) 1fr; gap: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .terms dt { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink); }
+  .terms dd { margin: 0; color: var(--ink-2); line-height: 1.55; }
+  .flowx { min-width: 0; }
+  .grid-flow { display: block; height: auto; width: 100%; }
+
+  /* 終端機 */
+  .cmds { margin-top: 22px; display: grid; gap: 14px; }
+  .cmds-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+  .term { border-left: 2px solid var(--line-strong); padding-left: 12px; }
+  .term pre { margin: 0; background: var(--code-bg); padding: 10px 12px; overflow-x: auto; font-family: "IBM Plex Mono", monospace; font-size: 12px; line-height: 1.55; color: var(--ink-3); }
+  .term .cmd { color: var(--ink); }
+  .term .cmd::before { content: "$ "; color: var(--accent); }
+  .term .cm { color: var(--wait); }
+  .term p { margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2); max-width: 78ch; }
+
+  .pitfalls { margin-top: 18px; font-size: 14px; max-width: 78ch; }
+  .pitfalls b { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--fail); margin-bottom: 4px; font-weight: 500; }
+  .pitfalls ul { margin: 0; padding-left: 20px; color: var(--ink-2); }
+  .pitfalls li { margin: 4px 0; }
+
+  .pager { display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line-strong); padding-top: 18px; margin-top: 10px; font-size: 14px; }
+  .pager a { text-decoration: none; display: grid; gap: 2px; }
+  .pager a:hover span:last-child { text-decoration: underline; }
+  .pager small { color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; }
+  .pager .next { text-align: right; margin-left: auto; }
+
+  /* 總覽頁：閱讀路線 */
+  .route { margin-top: 44px; }
+  .route h2 { font-size: 18px; margin-bottom: 6px; }
+  .route > p { color: var(--ink-2); margin: 0 0 14px; max-width: 70ch; }
+  .layer { border-top: 1px solid var(--line-strong); padding: 16px 0 18px; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; }
+  .layer h3 { font-size: 17px; }
+  .layer h3 a { text-decoration: none; }
+  .layer h3 a:hover { text-decoration: underline; }
+  .layer .eyebrow { margin-bottom: 4px; }
+  .layer .desc { color: var(--ink-2); font-size: 13.5px; margin: 6px 0 0; }
+  .layer ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .layer li a { display: grid; grid-template-columns: 62px 1fr; gap: 8px; text-decoration: none; font-size: 14px; }
+  .layer li a:hover .t { text-decoration: underline; }
+  .layer li .id { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+  .layer li .s { grid-column: 2; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+  .howto { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 6px 26px; font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 12px; }
+  .howto b { color: var(--ink); font-weight: 500; }
+  .note-src { margin-top: 36px; font-size: 12.5px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 12px; max-width: 90ch; }
+
+  @media (max-width: 1100px) {
+    .arch-wrap, .intro-grid, .kp-grid { grid-template-columns: 1fr; }
+    .kp-grid .mini, .intro-grid .mini { max-width: 420px; }
+  }
+  @media (max-width: 860px) {
+    .page { grid-template-columns: 1fr; }
+    .layer { grid-template-columns: 1fr; gap: 10px; }
+    .tabs { margin-left: 0; }
+  }
+
+</style>
+
+<header class="topbar"><div class="topbar-inner">
+    <div class="brand">Notes 架構地圖 <small>liaooliver/notes · notes-deploy</small></div>
+    <nav class="tabs" aria-label="分頁"><a href="index.html">總覽</a><a href="git.html">Git 流程</a><a href="ci.html">CI 與發版</a><a href="gitops.html">GitOps</a><a href="k8s.html" aria-current="page">k8s runtime</a><a href="cmd.html">k8s 指令</a></nav>
+  </div></header>
+<div class="page">
+  <nav class="nav" aria-label="知識點目錄">
+    <h3>k8s runtime</h3>
+    <ol id="nav-list"><li><a href="#k8s-01"><span class="id">K8S-01</span><span class="label">環境全貌：Mac 裡的 VM 裡的單節點 k3s</span></a></li><li><a href="#k8s-02"><span class="id">K8S-02</span><span class="label">Namespace：一個 cluster 放兩個環境</span></a></li><li><a href="#k8s-03"><span class="id">K8S-03</span><span class="label">Deployment → ReplicaSet → Pod：image tag 變了之後</span></a></li><li><a href="#k8s-04"><span class="id">K8S-04</span><span class="label">Service 與 label selector：流量怎麼找到 Pod</span></a></li><li><a href="#k8s-05"><span class="id">K8S-05</span><span class="label">一個 request 的完整路徑：瀏覽器到 Pod</span></a></li><li><a href="#k8s-06"><span class="id">K8S-06</span><span class="label">容器裡面：nginx 與 Express 各自在做什麼</span></a></li><li><a href="#k8s-07"><span class="id">K8S-07</span><span class="label">image pull：kubelet 怎麼從 GHCR 拿到 arm64 那一份</span></a></li><li><a href="#k8s-08"><span class="id">K8S-08</span><span class="label">resources：requests 給 scheduler 看，limits 給 kernel 執行</span></a></li><li><a href="#k8s-09"><span class="id">K8S-09</span><span class="label">Traefik 回 no available server：從外往內排錯</span></a></li></ol>
+    <h3>其他</h3>
+    <ol><li><a href="index.html"><span class="id">MAP</span><span class="label">總架構圖</span></a></li></ol>
+  </nav>
+  <main class="main">
+    <section class="intro"><div class="intro-grid">
+      <div><div class="eyebrow">第 4 層 · Multipass VM 裡的 k3s</div><h1>k8s runtime</h1><p class="lede">這一層從「manifest 已經被 Argo CD apply 進 cluster」開始。接下來是 k3s 自己的事：controller 把 Deployment 變成 Pod、Service 靠 label 找到 Pod、Traefik 把瀏覽器的 request 送到對的容器。每個知識點都拆成「誰呼叫誰、依序發生什麼」。</p></div>
+      <figure class="mini"><div class="mini-slot" data-ids="K3S TRA NS_S NS_P ARGO BROWSER WEB_S WEB_P API_S API_P GHCR"></div><figcaption>這一層在總架構圖上的範圍 · 點圖回總覽</figcaption></figure>
+    </div></section>
+    
+<article class="kp" id="k8s-01">
+  <div class="kp-head"><span class="id">K8S-01</span><span class="where">Mac › Multipass VM k3s › k3s（kube-system / argocd / notes-*）</span></div>
+  <h2>環境全貌：Mac 裡的 VM 裡的單節點 k3s</h2>
+  <p class="tldr">整個 cluster 是 Mac 上一台 6 GB 的 arm64 VM；control-plane 與 worker 是同一台，Traefik、ServiceLB、CoreDNS 都是 k3s 內建。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>Mac 上用 Multipass 開一台 Ubuntu VM，名稱就叫 <code>k3s</code>，4 core、6 GB、40 GB 磁碟。Apple Silicon 上的 VM 是 <b>linux/arm64</b>，這決定了後面所有 image 都得是 multi-arch。</p>
+<p>VM 裡跑的是 k3s 單節點。API server、scheduler、controller-manager、kubelet、containerd 全在同一個行程群裡，節點角色顯示 <code>control-plane,master</code>，但一般 Pod 也照樣排上來。k3s 安裝時順便帶了 Traefik（Ingress controller）、ServiceLB（又叫 klipper-lb）、CoreDNS、local-path storage，所以 Ingress 不用另外裝。</p>
+<p>記憶體是這台機器的真正限制。Argo CD 一套約 1.5 GB，是 VM 裡最大的一塊；兩個 namespace 的應用加起來不到 100 MB。不做多節點的理由寫在 roadmap 第 0.2 節：多節點練的是 affinity、taint、drain 這類排程技能，不在這個專案的學習範圍。</p>
+<p>Mac 上的 kubectl 透過 <code>~/.kube/config-k3s</code> 連 VM 的 6443 port。從 VM 撈出來的 kubeconfig 寫的是 <code>127.0.0.1</code>，不換成 VM 的 IP，kubectl 會去連 Mac 自己然後逾時。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="K3S TRA NS_S NS_P ARGO BROWSER"></div><figcaption>位置：k3s cluster（Multipass VM）、Traefik（k3s 內建 Ingress controller）、namespace notes-staging、namespace notes-production、Argo CD、Mac 上的瀏覽器</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>k3s</dt><dd>精簡版 Kubernetes，單一 binary。這裡是單節點，control-plane 與 worker 是同一台 VM。</dd></div><div><dt>containerd</dt><dd>kubelet 透過 CRI 呼叫的容器 runtime，負責拉 image、建容器。k3s 內建，不需要 Docker。</dd></div><div><dt>ServiceLB</dt><dd>k3s 內建的 LoadBalancer 實作。替 type: LoadBalancer 的 Service 在節點上開 hostPort，Traefik 的 80/443 就是這樣佔住 VM 的 port。</dd></div><div><dt>kube-system</dt><dd>k3s 內建元件所在的 namespace：traefik、svclb-traefik、coredns、metrics-server。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">執行環境 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"mac","c":0,"r":1,"l":["Mac M4 · 16 GB","macOS ≈5 GB · 瀏覽器"]},{"id":"vm","c":1,"r":1,"l":["Multipass VM k3s","Ubuntu 24.04 · arm64 · 6 GB"]},{"id":"k3s","c":2,"r":1,"l":["k3s v1.36.4+k3s1","control-plane = worker"]},{"id":"tra","c":2,"r":0,"l":["Traefik + ServiceLB","佔 VM 的 :80 / :443"]},{"id":"argo","c":2,"r":2,"l":["Argo CD","7 個元件 ≈1.5 GB"]},{"id":"ctd","c":3,"r":1,"l":["containerd","拉 image、跑容器"]},{"id":"nss","c":4,"r":0,"l":["notes-staging","web + api ≈30 MB"]},{"id":"nsp","c":4,"r":2,"l":["notes-production","web + api ≈60 MB"]}],"edges":[{"id":"e1","from":"mac","to":"vm","label":"multipass launch"},{"id":"e2","from":"vm","to":"k3s","label":"get.k3s.io"},{"id":"e3","from":"k3s","to":"tra","label":"內建"},{"id":"e4","from":"k3s","to":"argo","label":"kubectl apply"},{"id":"e5","from":"k3s","to":"ctd","label":"CRI"},{"id":"e6","from":"ctd","to":"nss"},{"id":"e7","from":"ctd","to":"nsp"}],"steps":[{"n":["mac"],"e":[],"t":"Mac M4 16 GB：macOS 約吃 5 GB，剩下要分給瀏覽器、編輯器和 VM"},{"n":["mac","vm"],"e":["e1"],"t":"multipass launch 開一台 6 GB / 4 core 的 Ubuntu VM，架構是 arm64"},{"n":["vm","k3s"],"e":["e2"],"t":"VM 裡裝 k3s 單節點，control-plane 與 worker 是同一台"},{"n":["k3s","tra"],"e":["e3"],"t":"k3s 內建 Traefik 與 ServiceLB，VM 的 80 port 由 Traefik 接"},{"n":["k3s","argo"],"e":["e4"],"t":"Argo CD 另外 apply 進同一個 cluster，是 VM 裡最吃記憶體的一塊"},{"n":["ctd","nss","nsp"],"e":["e5","e6","e7"],"t":"containerd 在兩個 namespace 各跑一組 web + api，合計不到 100 MB"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0 4 5" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md · 0.2 記憶體預算</div>
+          <pre><code><span>┌──────────────── Mac M4 / 16 GB ─────────────────┐</span>
+<span class="hl"> │ macOS 本身                            ~5 GB     │</span>
+<span>│                                                 │</span>
+<span>│ ┌────────── Multipass VM（6 GB）──────────────┐ │</span>
+<span>│ │ k3s 本體（含 Traefik、CoreDNS）  ~600 MB    │ │</span>
+<span class="hl"> │ │ Argo CD（7 個元件，最肥的一塊）  ~1.5 GB    │ │</span>
+<span class="hl"> │ │ notes-staging                     ~30 MB    │ │</span>
+<span class="hl"> │ │ notes-production                  ~60 MB    │ │</span>
+<span>│ │ 餘裕                             ~3.8 GB    │ │</span>
+<span>│ └─────────────────────────────────────────────┘ │</span>
+<span>│                                                 │</span>
+<span>│ 剩 ~5 GB 給 Chrome / VS Code / npm              │</span>
+<span>└─────────────────────────────────────────────────┘</span></code></pre>
+          <p class="snip-why">整台 Mac 的記憶體帳。VM 固定 6 GB，Argo CD 是最大宗，應用本身很小。</p>
+        </div>
+        <div class="snip" data-steps="1" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md · 5.1 開一台 VM</div>
+          <pre><code><span>brew install --cask multipass</span>
+<span></span>
+<span># 6 GB / 4 core / 40 GB，理由見第 0.2 節</span>
+<span class="hl"> multipass launch --name k3s --cpus 4 --memory 6G --disk 40G 24.04</span>
+<span></span>
+<span>multipass info k3s          # 記下 IPv4，後面 /etc/hosts 會用到</span>
+<span>multipass shell k3s         # 進到 VM 裡</span></code></pre>
+          <p class="snip-why">VM 的規格就在這一行決定。名稱 k3s 之後會出現在 multipass info 和 node 名稱裡。</p>
+        </div>
+        <div class="snip" data-steps="2 3" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md · 5.2 在 VM 裡裝 k3s</div>
+          <pre><code><span># 以下都在 VM 裡執行</span>
+<span class="hl"> curl -sfL https://get.k3s.io | sh -</span>
+<span></span>
+<span>sudo k3s kubectl get nodes</span>
+<span># NAME   STATUS   ROLES                  AGE   VERSION</span>
+<span class="hl"> # k3s    Ready    control-plane,master   30s   v1.36.4+k3s1</span></code></pre>
+          <p class="snip-why">一行裝完。ROLES 同時是 control-plane，版本是實機的 v1.36.4+k3s1（PR #42 校正過）。</p>
+        </div>
+        <div class="snip" data-steps="2" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md · 5.3 從 Mac 直接用 kubectl</div>
+          <pre><code><span>VM_IP=$(multipass info k3s --format csv | tail -1 | cut -d, -f3)</span>
+<span>echo "$VM_IP"</span>
+<span></span>
+<span>multipass exec k3s -- sudo cat /etc/rancher/k3s/k3s.yaml \</span>
+<span class="hl">   | sed "s|127.0.0.1|${VM_IP}|" &gt; ~/.kube/config-k3s</span>
+<span>chmod 600 ~/.kube/config-k3s</span>
+<span></span>
+<span>export KUBECONFIG=~/.kube/config-k3s   # 建議寫進 ~/.zshrc</span>
+<span>kubectl get nodes</span></code></pre>
+          <p class="snip-why">kubeconfig 裡的 127.0.0.1 一定要 sed 成 VM 的 IP，否則 Mac 上的 kubectl 連的是自己。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">kubectl get nodes -o wide</span>
+<span class="cm"># 示意輸出（VERSION 取自 docs/gitops-roadmap.md 5.2 的實機值，其餘欄位依環境推得）</span>
+NAME   STATUS   ROLES                  AGE   VERSION        INTERNAL-IP    OS-IMAGE             CONTAINER-RUNTIME
+k3s    Ready    control-plane,master   7d    v1.36.4+k3s1   192.168.64.5   Ubuntu 24.04 LTS     containerd://…</pre><p>確認只有一個節點、版本、以及 INTERNAL-IP。這個 IP 就是 /etc/hosts 要填的那個。</p></div><div class="term"><pre><span class="cmd">kubectl -n kube-system get pods</span>
+<span class="cm"># 示意輸出（依 k3s 預設安裝推得）</span>
+NAME                                      READY   STATUS      RESTARTS   AGE
+coredns-…                                 1/1     Running     0          7d
+local-path-provisioner-…                  1/1     Running     0          7d
+metrics-server-…                          1/1     Running     0          7d
+helm-install-traefik-crd-…                0/1     Completed   0          7d
+helm-install-traefik-…                    0/1     Completed   1          7d
+svclb-traefik-…                           2/2     Running     0          7d
+traefik-…                                 1/1     Running     0          7d</pre><p>k3s 內建元件都在這裡。svclb-traefik 就是 ServiceLB 替 Traefik 佔住 80/443 的那個 Pod。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p><b>Mac 睡醒後的假警報（liaooliver/notes#43）。</b>production 的 Pod 跑著 <code>sha-1044bc45</code>，<code>AGE</code> 顯示 <code>18h</code>，但 notes-deploy 裡把 image 換成這個 tag 的 commit <code>efd8792</code> 是 2026-09-26 12:01:40 UTC 才推的，看起來像有人繞過 Git 直接改了 cluster。</p>
+<p>實際原因是 Mac 睡眠時 VM 被一起暫停，VM 時鐘停住，醒來後 <code>systemd-timesyncd</code> 才把它往前跳。<code>journalctl</code> 裡有一段 <code>2026-09-25T17:57:36Z → 2026-09-26T12:04:09Z</code> 完全沒有紀錄的斷點。同一個 cluster 裡，對時之後才建的 staging Pod <code>AGE</code> 是正常的幾分鐘。</p>
+<p>另外 5.2 節原本憑印象寫 <code>v1.31.x+k3s1</code>，liaooliver/notes#42 改成實機的 <code>v1.36.4+k3s1</code>。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>kubeconfig 的 server: 是 127.0.0.1，直接用會連到 Mac 自己的 6443 然後逾時。</li><li>VM 重開後 IP 可能會變，/etc/hosts 和 ~/.kube/config-k3s 兩邊都要更新。</li><li>Mac 睡醒後 VM 裡的時間戳不可信：Pod 的 AGE 會多出睡眠時數，先看 journal 有沒有斷點再下結論。</li><li>舊版 Multipass 的參數是 --mem 不是 --memory。</li></ul></div>
+</article>
+
+<article class="kp" id="k8s-02">
+  <div class="kp-head"><span class="id">K8S-02</span><span class="where">k3s › namespace notes-staging / notes-production</span></div>
+  <h2>Namespace：一個 cluster 放兩個環境</h2>
+  <p class="tldr">物件的唯一鍵是 kind + namespace + name，所以兩個 notes-web 不衝突；namespace 隔開的是名稱，不是網路也不是資源。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>base 的五份 manifest 都沒寫 namespace。overlay 只加一行 <code>namespace: notes-staging</code>，kustomize build 時把它寫進每個物件的 <code>metadata.namespace</code>。Argo CD 再把結果 apply 進去，Application 的 <code>CreateNamespace=true</code> 讓 namespace 不存在時先建出來。</p>
+<p>API server 存物件時用的鍵是 kind + namespace + name。所以 <code>Deployment/notes-staging/notes-web</code> 和 <code>Deployment/notes-production/notes-web</code> 是兩筆不同的資料，controller 各自管各自的 Pod。Service 的短名稱也是 namespace 範圍：staging 的 Pod 查 <code>notes-api</code>，CoreDNS 回的是 staging 那個 Service。</p>
+<p>namespace 沒有隔開的東西：同一台 Node 的 CPU 與記憶體、Pod 之間的網路（沒有 NetworkPolicy 時，任一 Pod 都連得到另一個 namespace 的 Pod IP）、以及 cluster 層級的物件。Traefik 只有一個，它讀<b>所有</b> namespace 的 Ingress，兩個環境能分開完全靠 Ingress 的 <code>host</code> 不同。</p>
+<p>選單 cluster 兩 namespace 而不是兩個 cluster，是因為第二套 k3s 要多一台 VM、多一份 kubeconfig 和跨 VM 網路，記憶體也不夠（roadmap 第 0.5 節）。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="K3S NS_S NS_P WEB_S WEB_P TRA"></div><figcaption>位置：k3s cluster（Multipass VM）、namespace notes-staging、namespace notes-production、notes-staging › notes-web、notes-production › notes-web、Traefik（k3s 內建 Ingress controller）</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>namespace</dt><dd>物件名稱的範圍。同一個 namespace 內 name 不能重複，跨 namespace 可以。</dd></div><div><dt>cluster-scoped</dt><dd>不屬於任何 namespace 的物件，例如 Node、Namespace、IngressClass。兩個環境共用。</dd></div><div><dt>CreateNamespace=true</dt><dd>Argo CD 的 syncOption：目標 namespace 不存在就先建。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">同名物件落在兩個 namespace · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"base","c":0,"r":1,"l":["base/","沒有 namespace 欄位"]},{"id":"ovs","c":1,"r":0,"l":["overlays/staging","namespace: notes-staging"]},{"id":"ovp","c":1,"r":2,"l":["overlays/production","namespace: notes-production"]},{"id":"nss","c":2,"r":0,"l":["ns notes-staging","notes-web · notes-api · notes"]},{"id":"nsp","c":2,"r":2,"l":["ns notes-production","notes-web · notes-api · notes"]},{"id":"node","c":2,"r":1,"l":["Node k3s","CPU / 記憶體 / 網路共用"]},{"id":"tra","c":3,"r":1,"l":["Traefik（kube-system）","讀所有 namespace 的 Ingress"]}],"edges":[{"id":"e1","from":"base","to":"ovs","label":"resources"},{"id":"e2","from":"base","to":"ovp","label":"resources"},{"id":"e3","from":"ovs","to":"nss","label":"metadata.namespace"},{"id":"e4","from":"ovp","to":"nsp","label":"metadata.namespace"},{"id":"e5","from":"nss","to":"tra","label":"host notes-staging.local"},{"id":"e6","from":"nsp","to":"tra","label":"host notes.local"},{"id":"e7","from":"nss","to":"node","dashed":true},{"id":"e8","from":"nsp","to":"node","dashed":true}],"steps":[{"n":["base"],"e":[],"t":"base 的物件名稱固定：notes-web、notes-api、notes，沒寫 namespace"},{"n":["ovs","ovp"],"e":["e1","e2"],"t":"兩個 overlay 各設 namespace:，kustomize 把它寫進每個物件"},{"n":["nss","nsp"],"e":["e3","e4"],"t":"同名物件落在不同 namespace，唯一鍵是 kind + namespace + name"},{"n":["tra"],"e":["e5","e6"],"t":"Traefik 只有一個，同時讀兩份 Ingress，靠 host 把流量分開"},{"n":["node"],"e":["e7","e8"],"t":"沒隔開的部分：兩個環境共用同一台 Node 的資源與 Pod 網路"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0 2" tabindex="0">
+          <div class="snip-file">notes-deploy · base/web-deployment.yaml</div>
+          <pre><code><span>apiVersion: apps/v1</span>
+<span>kind: Deployment</span>
+<span>metadata:</span>
+<span class="hl">   name: notes-web</span>
+<span>spec:</span>
+<span>  replicas: 1</span></code></pre>
+          <p class="snip-why">base 只有 name，沒有 namespace。兩個環境的 Deployment 都叫 notes-web。</p>
+        </div>
+        <div class="snip" data-steps="1 3" tabindex="0">
+          <div class="snip-file">notes-deploy · overlays/staging/kustomization.yaml</div>
+          <pre><code><span>apiVersion: kustomize.config.k8s.io/v1beta1</span>
+<span>kind: Kustomization</span>
+<span class="hl"> namespace: notes-staging</span>
+<span>resources:</span>
+<span>- ../../base</span>
+<span>…</span>
+<span>patches:</span>
+<span>- patch: |</span>
+<span>    - op: replace</span>
+<span>      path: /spec/rules/0/host</span>
+<span class="hl">       value: notes-staging.local</span></code></pre>
+          <p class="snip-why">一行 namespace 決定整組物件落在哪；patch 把 Ingress 的 host 換成 staging 專用的。</p>
+        </div>
+        <div class="snip" data-steps="1 3" tabindex="0">
+          <div class="snip-file">notes-deploy · overlays/production/kustomization.yaml</div>
+          <pre><code><span class="hl"> namespace: notes-production</span>
+<span>resources:</span>
+<span>- ../../base</span>
+<span>…</span>
+<span>patches:</span>
+<span>- patch: |</span>
+<span>    - op: replace</span>
+<span>      path: /spec/rules/0/host</span>
+<span class="hl">       value: notes.local</span></code></pre>
+          <p class="snip-why">同一份 base，差別只在 namespace、image tag 和 host。</p>
+        </div>
+        <div class="snip" data-steps="2" tabindex="0">
+          <div class="snip-file">notes-deploy · argocd/notes-staging.yaml</div>
+          <pre><code><span>  destination:</span>
+<span>    server: https://kubernetes.default.svc</span>
+<span class="hl">     namespace: notes-staging</span>
+<span>  syncPolicy:</span>
+<span>    automated:</span>
+<span>      prune: true</span>
+<span>      selfHeal: true</span>
+<span>    syncOptions:</span>
+<span class="hl">       - CreateNamespace=true</span></code></pre>
+          <p class="snip-why">Argo CD 的 destination 也指定 namespace，CreateNamespace 讓它不存在時先建。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">kubectl get deploy,svc,ingress -A -l app=notes</span>
+<span class="cm"># 示意輸出（依 manifest 推得）</span>
+NAMESPACE          NAME                        READY   UP-TO-DATE   AVAILABLE
+notes-production   deployment.apps/notes-api   1/1     1            1
+notes-production   deployment.apps/notes-web   1/1     1            1
+notes-staging      deployment.apps/notes-api   1/1     1            1
+notes-staging      deployment.apps/notes-web   1/1     1            1
+…</pre><p>-A 跨所有 namespace。同名的 notes-web 出現兩次，差在 NAMESPACE 欄。注意 Ingress 沒有 label，這行選不到它，要另外 get ingress -A。</p></div><div class="term"><pre><span class="cmd">kubectl get ingress -A</span>
+<span class="cm"># 示意輸出（依 manifest 推得）</span>
+NAMESPACE          NAME    CLASS     HOSTS                 ADDRESS        PORTS
+notes-production   notes   traefik   notes.local           192.168.64.5   80
+notes-staging      notes   traefik   notes-staging.local   192.168.64.5   80</pre><p>兩個 Ingress 同名、同一個 Traefik，唯一的差別是 HOSTS。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p>現在兩個 namespace 跑的是不同版本：notes-deploy 的 <code>02a6026</code>（2026-09-27 04:18 UTC）把 production 換成 <code>sha-91b7f11…</code>，staging 停在 <code>27d7c79</code> 寫入的 <code>sha-64430d0…</code>。每一筆 bump commit 只改一個 overlay，另一個 namespace 的物件完全不受影響。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>兩個 overlay 若寫成同一個 host，兩份 Ingress 會搶同一個網址，namespace 擋不住這種衝突。</li><li>kubectl 沒帶 -n 時看的是 default namespace，回 No resources found 不代表東西不存在。</li><li>staging 的 Pod 吃爆記憶體，一樣會擠到 production，因為它們在同一台 Node 上。</li></ul></div>
+</article>
+
+<article class="kp" id="k8s-03">
+  <div class="kp-head"><span class="id">K8S-03</span><span class="where">k3s › kube-controller-manager › Deployment / ReplicaSet controller</span></div>
+  <h2>Deployment → ReplicaSet → Pod：image tag 變了之後</h2>
+  <p class="tldr">tag 一變就產生新的 ReplicaSet；replicas 1 的預設策略是先多開一個新 Pod，readinessProbe 通過之後才殺舊 Pod。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>Argo CD apply 的只是一個欄位的變化：<code>spec.template.spec.containers[0].image</code> 從 <code>sha-舊</code> 變成 <code>sha-新</code>。Deployment controller 對 template 算一個 hash，找不到同 hash 的 ReplicaSet，就建一個新的。舊的 ReplicaSet 不刪，縮成 0 留著，預設保留 10 份。</p>
+<p>manifest 沒寫 <code>strategy</code>，所以用預設的 RollingUpdate：<code>maxSurge 25%</code>、<code>maxUnavailable 25%</code>。replicas 是 1 時，surge 進位成 1、unavailable 捨去成 0，意思是「可以多一個，但一個都不能少」。所以一定是先開新 Pod，新 Pod Ready 之後才縮舊的。</p>
+<p>「Ready」由 readinessProbe 決定。web 打 <code>GET / :80</code>，api 打 <code>GET /api/health :3000</code>，預設每 10 秒一次，回 200–399 算通過。通過前，新 Pod 的 IP 不會進 Service 的 endpoints，流量全在舊 Pod 上。</p>
+<p>沒有 readinessProbe 會怎樣：容器一啟動就算 Ready，舊 Pod 立刻被殺，nginx 或 Express 還沒開始 listen 的那幾秒，request 會拿到 502。反過來 probe 一直失敗時，舊 Pod 不會被動，流量照舊，600 秒後 Deployment 標 <code>ProgressDeadlineExceeded</code>。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="NS_S WEB_S API_S"></div><figcaption>位置：namespace notes-staging、notes-staging › notes-web、notes-staging › notes-api</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>ReplicaSet</dt><dd>負責「維持 N 個長這樣的 Pod」。每個不同的 Pod template 對應一個 ReplicaSet，名稱後綴就是 template hash。</dd></div><div><dt>maxSurge / maxUnavailable</dt><dd>rolling update 時最多多開幾個、最多少幾個。預設都是 25%，replicas 1 時換算成 1 與 0。</dd></div><div><dt>readinessProbe</dt><dd>kubelet 定期打的健康檢查。通過才標 Ready，Ready 的 Pod 才會進 endpoints 接流量。</dd></div><div><dt>terminationGracePeriodSeconds</dt><dd>舊 Pod 收到 SIGTERM 後最多等幾秒才 SIGKILL，預設 30。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant A as API server
+    participant D as Deployment controller
+    participant K as kubelet
+    participant N as 新 Pod
+    participant E as Endpoints controller
+    participant O as 舊 Pod
+    A->>D: watch：notes-web 的 template 變了（image 換 tag）
+    D->>D: 新 template hash 找不到對應的 ReplicaSet
+    D->>A: 建新 ReplicaSet（replicas 0）
+    Note over D: replicas 1：maxSurge 進位成 1、maxUnavailable 捨去成 0，先加一個、不先砍
+    D->>A: 新 ReplicaSet 擴到 1（此刻共 2 個 Pod）
+    A->>K: scheduler 把新 Pod 排到 node k3s
+    K->>N: containerd 拉 sha-新 image、啟動容器
+    alt readinessProbe 通過
+        K->>N: GET / :80（每 10 秒一次）
+        N-->>K: 200
+        K->>A: 新 Pod Ready=True
+        A-->>E: watch：Pod 變 Ready
+        E->>A: notes-web 的 endpoints 加入新 Pod IP
+        D->>A: 舊 ReplicaSet 縮成 0
+        A->>O: 舊 Pod 進 Terminating，從 endpoints 移除
+        K->>O: SIGTERM，30 秒內沒結束就 SIGKILL
+    else probe 一直失敗
+        Note over D,O: 新 Pod 永遠不 Ready，舊 Pod 不會被縮、流量照舊；600 秒後標 ProgressDeadlineExceeded
+    end
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0" tabindex="0">
+          <div class="snip-file">notes-deploy · overlays/staging/kustomization.yaml</div>
+          <pre><code><span>images:</span>
+<span>- name: ghcr.io/liaooliver/notes</span>
+<span>  newName: ghcr.io/liaooliver/notes</span>
+<span class="hl">   newTag: sha-64430d0759dbc47064cac1ce9f21beebb84bc192</span>
+<span>- name: ghcr.io/liaooliver/notes-api</span>
+<span>  newName: ghcr.io/liaooliver/notes-api</span>
+<span class="hl">   newTag: sha-64430d0759dbc47064cac1ce9f21beebb84bc192</span></code></pre>
+          <p class="snip-why">觸發點。CI 只改這一行 newTag，Argo CD apply 後 Deployment 的 template 就不一樣了。</p>
+        </div>
+        <div class="snip" data-steps="3 4 7 8 9" tabindex="0">
+          <div class="snip-file">notes-deploy · base/web-deployment.yaml</div>
+          <pre><code><span>spec:</span>
+<span class="hl">   replicas: 1</span>
+<span>  selector:</span>
+<span>    matchLabels:</span>
+<span>      app: notes</span>
+<span>      component: web</span>
+<span>  template:</span>
+<span>    …</span>
+<span>      containers:</span>
+<span>        - name: web</span>
+<span>          image: ghcr.io/liaooliver/notes   # tag 由 overlay 的 images: 覆寫</span>
+<span>          ports:</span>
+<span>            - containerPort: 80</span>
+<span class="hl">           readinessProbe:</span>
+<span class="hl">             httpGet:</span>
+<span class="hl">               path: /</span>
+<span class="hl">               port: 80</span></code></pre>
+          <p class="snip-why">沒有 strategy 欄位，所以用預設值；readinessProbe 決定新 Pod 什麼時候算 Ready。</p>
+        </div>
+        <div class="snip" data-steps="7 8" tabindex="0">
+          <div class="snip-file">notes-deploy · base/api-deployment.yaml</div>
+          <pre><code><span>          readinessProbe:</span>
+<span>            httpGet:</span>
+<span class="hl">               path: /api/health                 # Express 實作的那條</span>
+<span class="hl">               port: 3000</span></code></pre>
+          <p class="snip-why">api 的 probe 打的是 Express 專門為它寫的那條路由。</p>
+        </div>
+        <div class="snip" data-steps="8 9" tabindex="0">
+          <div class="snip-file">api/server.js</div>
+          <pre><code><span class="hl">   // k8s 的 readinessProbe 打這條；回 200 之前不會有流量進來。</span>
+<span class="hl">   app.get('/api/health', (req, res) =&gt; res.json({ status: 'ok' }))</span></code></pre>
+          <p class="snip-why">probe 的另一端。app.listen 之前這條不會回應，所以 Express 還沒起來時 Pod 不會 Ready。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">kubectl -n notes-staging rollout status deploy/notes-web</span>
+<span class="cm"># 示意輸出（依 manifest 推得）</span>
+Waiting for deployment "notes-web" rollout to finish: 1 old replicas are pending termination...
+deployment "notes-web" successfully rolled out</pre><p>卡在 old replicas pending 很久，通常是新 Pod 的 probe 沒過。</p></div><div class="term"><pre><span class="cmd">kubectl -n notes-staging get rs -l component=web</span>
+<span class="cm"># 示意輸出（依 manifest 推得，hash 為虛構）</span>
+NAME                   DESIRED   CURRENT   READY   AGE
+notes-web-6c9d7f5b8d   1         1         1       3m
+notes-web-58f4b6c7d9   0         0         0       40m
+notes-web-7b8c9d4f6e   0         0         0       2h</pre><p>每次換 tag 多一個 ReplicaSet，舊的 DESIRED 是 0。describe 其中一個看 image 就知道是哪一版。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p>notes-deploy 從 2026-09-25 15:42（<code>377d045</code>，第一次同時寫兩個 image）到 2026-09-26 12:25（<code>27d7c79</code>）共有 7 筆 staging bump commit，production 有 3 筆（<code>d373a42</code>、<code>efd8792</code>、<code>02a6026</code>）。每一筆都換了 40 碼 SHA tag，所以每一筆都讓兩個 Deployment 各走一次上面這張圖。</p>
+<p>docs/use-cases.md UC-15 第 6 步記錄的就是這一段：「新 pod 通過 readinessProbe 之後才殺舊 pod」，全程沒有人敲 kubectl。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>沒有 readinessProbe，rolling update 會在新 Pod 還不能服務時就砍舊 Pod，Argo CD 顯示 Healthy，但實際有幾秒 502。</li><li>readinessProbe 只控制「接不接流量」，不會重啟容器；要自動重啟卡死的行程是 livenessProbe，這個專案沒設。</li><li>rolling update 期間短暫有 2 個 Pod，requests 也短暫加倍，記憶體預算要留這個餘裕。</li></ul></div>
+</article>
+
+<article class="kp" id="k8s-04">
+  <div class="kp-head"><span class="id">K8S-04</span><span class="where">k3s › Service / Endpoints / CoreDNS › notes-staging</span></div>
+  <h2>Service 與 label selector：流量怎麼找到 Pod</h2>
+  <p class="tldr">Service 用 selector 挑 Pod，endpoints controller 把「符合 label 且 Ready」的 Pod IP 列成清單；少一個 label 就會選錯 Pod，而且不會報錯。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>web 和 api 的 Pod 都帶 <code>app: notes</code>，差別只在 <code>component: web</code> 或 <code>component: api</code>。Service <code>notes-web</code> 的 selector 兩個都要求，所以只選得到 web 的 Pod。endpoints controller 持續 watch Pod，把「label 符合而且 Ready」的 Pod IP 加上 targetPort 寫進同名的 Endpoints 物件。</p>
+<p>Service 本身拿到一個 ClusterIP（k3s 預設從 10.43.0.0/16 配），這是虛擬 IP，沒有任何網卡擁有它。kube-proxy 在節點上寫 iptables 規則，把送往 ClusterIP:port 的封包轉到 Endpoints 裡的某個 Pod IP。CoreDNS 負責名稱：<code>notes-api.notes-staging.svc.cluster.local</code> 解析成那個 ClusterIP；同 namespace 內寫 <code>notes-api</code> 就夠。</p>
+<p>如果 <code>notes-web</code> 的 selector 少了 component，api 的 Pod 也會進它的 Endpoints。targetPort 是數字 80，被分到 api Pod 的 request 會打到 api Pod 的 80 port，那裡沒有行程在聽，連線被拒。結果是大約一半的首頁 request 失敗。docs 裡寫的症狀是「首頁有時正常有時 404」；依這份 manifest 推算，比較可能是 Traefik 回 502，共同點是間歇性、而且 <code>kubectl get pods</code> 全部 Running。</p>
+<p>Deployment、Service、Ingress 三層之間沒有任何自動關聯，全靠字串對上。<code>kubectl get endpoints</code> 是唯一能直接看出「Service 後面到底接到誰」的地方。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="NS_S WEB_S API_S"></div><figcaption>位置：namespace notes-staging、notes-staging › notes-web、notes-staging › notes-api</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>selector</dt><dd>Service 用來挑 Pod 的 label 條件，所有 key=value 都要符合才算。</dd></div><div><dt>Endpoints / EndpointSlice</dt><dd>Service 目前接到的 Pod IP:port 清單，只收 Ready 的 Pod。k8s 1.33 起建議改看 EndpointSlice。</dd></div><div><dt>ClusterIP</dt><dd>Service 的虛擬 IP，只在 cluster 內有效，由 kube-proxy 的 iptables 規則轉成 Pod IP。</dd></div><div><dt>CoreDNS</dt><dd>cluster 內的 DNS。把「服務名.namespace.svc.cluster.local」解析成 ClusterIP。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">Service → Endpoints → Pod · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"svcW","c":0,"r":0,"l":["Service notes-web","ClusterIP :80"]},{"id":"dns","c":0,"r":1,"l":["CoreDNS","notes-api.notes-staging.svc"]},{"id":"svcA","c":0,"r":2,"l":["Service notes-api","ClusterIP :3000"]},{"id":"epW","c":1,"r":0,"l":["Endpoints notes-web","Ready 的 web Pod IP:80"]},{"id":"epA","c":1,"r":2,"l":["Endpoints notes-api","Ready 的 api Pod IP:3000"]},{"id":"podW","c":2,"r":0,"l":["Pod notes-web-…","app=notes · component=web"]},{"id":"podA","c":2,"r":2,"l":["Pod notes-api-…","app=notes · component=api"]},{"id":"depW","c":3,"r":0,"l":["Deployment notes-web","template labels"]},{"id":"depA","c":3,"r":2,"l":["Deployment notes-api","template labels"]}],"edges":[{"id":"dW","from":"depW","to":"podW","label":"建立"},{"id":"dA","from":"depA","to":"podA","label":"建立"},{"id":"sW","from":"svcW","to":"epW"},{"id":"eW","from":"epW","to":"podW","label":"component=web"},{"id":"sA","from":"svcA","to":"epA"},{"id":"eA","from":"epA","to":"podA","label":"component=api"},{"id":"d1","from":"dns","to":"svcA","label":"解析成 ClusterIP"},{"id":"d2","from":"dns","to":"svcW"},{"id":"bad","from":"epW","to":"podA","label":"少了 component 時","dashed":true}],"steps":[{"n":["depW","depA","podW","podA"],"e":["dW","dA"],"t":"Deployment 照 template 生 Pod：兩種 Pod 都帶 app=notes，只差 component"},{"n":["svcW","epW","podW"],"e":["sW","eW"],"t":"notes-web 要求 app=notes 且 component=web，endpoints 只列 web 的 Pod"},{"n":["svcA","epA","podA"],"e":["sA","eA"],"t":"只收 Ready 的 Pod：api 的 /api/health 回 200 之後 IP 才進 endpoints"},{"n":["dns","svcA","svcW"],"e":["d1","d2"],"t":"CoreDNS 把服務名稱解析成 ClusterIP，kube-proxy 再轉到 endpoints 裡的 Pod"},{"n":["epW","podA"],"e":["bad"],"t":"selector 少了 component：api 的 Pod 也進了 notes-web 的 endpoints"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0" tabindex="0">
+          <div class="snip-file">notes-deploy · base/api-deployment.yaml</div>
+          <pre><code><span>  selector:</span>
+<span>    matchLabels:</span>
+<span>      app: notes</span>
+<span class="hl">       component: api        # ← 跟 web 的差別只有這個欄位</span>
+<span>  template:</span>
+<span>    metadata:</span>
+<span>      labels:</span>
+<span class="hl">         app: notes</span>
+<span class="hl">         component: api</span></code></pre>
+          <p class="snip-why">Deployment 的 selector 與 template labels。template labels 就是 Pod 身上會出現的 label。</p>
+        </div>
+        <div class="snip" data-steps="1 4" tabindex="0">
+          <div class="snip-file">notes-deploy · base/web-service.yaml</div>
+          <pre><code><span>apiVersion: v1</span>
+<span>kind: Service</span>
+<span>metadata:</span>
+<span>  name: notes-web</span>
+<span>spec:</span>
+<span class="hl">   selector:</span>
+<span class="hl">     app: notes</span>
+<span class="hl">     component: web        # 必須跟 Deployment 的 template labels 完全一致</span>
+<span>  ports:</span>
+<span>    - port: 80</span>
+<span>      targetPort: 80</span></code></pre>
+          <p class="snip-why">這兩行 selector 就是全部的黏合。註解提醒它必須跟 Deployment 的 template labels 一致。</p>
+        </div>
+        <div class="snip" data-steps="2 3 4" tabindex="0">
+          <div class="snip-file">notes-deploy · base/api-service.yaml</div>
+          <pre><code><span>metadata:</span>
+<span>  name: notes-api</span>
+<span>spec:</span>
+<span>  selector:</span>
+<span>    app: notes</span>
+<span class="hl">     component: api        # 少了這行就會連 web 的 pod 一起選到，流量隨機打錯地方</span>
+<span>  ports:</span>
+<span class="hl">     - port: 3000</span>
+<span class="hl">       targetPort: 3000</span></code></pre>
+          <p class="snip-why">同樣的結構；註解直接寫出少了 component 的後果。port 是 ClusterIP 上的 port，targetPort 是 Pod 上的。</p>
+        </div>
+        <div class="snip" data-steps="2 3" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md · 9-e 三個要弄懂的概念</div>
+          <pre><code><span class="hl"> **1. Service DNS**：同一個 namespace 內，`http://notes-api:3000` 就是一個可以直接用的網址。CoreDNS 會把 `notes-api` 解析成 Service 的 ClusterIP。跨 namespace 要寫全名 `notes-api.notes-staging.svc.cluster.local`。</span>
+<span>…</span>
+<span>kubectl -n notes-staging get pods,endpoints</span>
+<span class="hl"> # endpoints/notes-api 要有一個 IP:3000。是空的 → selector 沒對到，或 pod 還沒 ready</span></code></pre>
+          <p class="snip-why">Service DNS 的完整寫法，以及 endpoints 為空的兩種原因。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">kubectl -n notes-staging get pods --show-labels</span>
+<span class="cm"># 示意輸出（依 manifest 推得）</span>
+NAME                         READY   STATUS    AGE   LABELS
+notes-api-7d9f8b6c5d-x2k4p   1/1     Running   3m    app=notes,component=api,pod-template-hash=7d9f8b6c5d
+notes-web-6c9d7f5b8d-q8m2n   1/1     Running   3m    app=notes,component=web,pod-template-hash=6c9d7f5b8d</pre><p>拿 LABELS 欄去對 Service 的 selector。pod-template-hash 是 ReplicaSet 自己加的。</p></div><div class="term"><pre><span class="cmd">kubectl -n notes-staging get endpoints</span>
+<span class="cm"># 示意輸出（依 manifest 推得，IP 為 k3s 預設 Pod 網段 10.42.0.0/16 內的虛構值）</span>
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+NAME        ENDPOINTS         AGE
+notes-api   10.42.0.31:3000   2d
+notes-web   10.42.0.30:80     5d</pre><p>每個 Service 應該剛好列出自己那種 Pod 的 IP。notes-web 多出一個 :80 以外的 IP 或數量不對，就是 selector 太寬。</p></div><div class="term"><pre><span class="cmd">kubectl -n notes-staging run dns-test --rm -it --image=busybox --restart=Never -- nslookup notes-api</span>
+<span class="cm"># 示意輸出（依 k3s 預設網段推得）</span>
+Name:      notes-api.notes-staging.svc.cluster.local
+Address:   10.43.x.x</pre><p>從 cluster 內部驗證 Service DNS。回的是 ClusterIP（10.43 網段），不是 Pod IP。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p>docs/gitops-roadmap.md 9-b 與 use-cases.md UC-18 都把「selector 寫太寬」列為這個專案最容易出錯的地方，所以 base 的兩份 Service 都用註解把 <code>component</code> 那一行標出來。notes-deploy 的第一個 commit <code>6c87329</code>（2026-09-19，那時只有 web 一個服務）就已經寫了 <code>component: web</code>，註解是 web-deployment.yaml 裡的「Phase 9 加 api 之後靠這個欄位區分」。所以 <code>4b60f81</code>（2026-09-25）加入 api 時，web 那兩份一行都不用改。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>Service 的 selector 寫錯不會有任何錯誤訊息，Service 照樣有 ClusterIP，只是 endpoints 是空的或選錯。</li><li>kubectl get service 看不出後面有沒有 Pod；要看 endpoints（或 endpointslices）。</li><li>k3s v1.36 對 kubectl get endpoints 會印 deprecated 警告，功能照常；新的寫法是 kubectl get endpointslices -l kubernetes.io/service-name=notes-api。</li><li>Deployment 的 selector 建立後不能改；要改 label 結構得刪掉 Deployment 重建。</li></ul></div>
+</article>
+
+<article class="kp" id="k8s-05">
+  <div class="kp-head"><span class="id">K8S-05</span><span class="where">Mac 瀏覽器 › /etc/hosts › VM :80 › Traefik › Ingress › Pod</span></div>
+  <h2>一個 request 的完整路徑：瀏覽器到 Pod</h2>
+  <p class="tldr">/etc/hosts 把網址指到 VM，ServiceLB 把 80 port 交給 Traefik，Traefik 依 host 與最長前綴挑 Service，再直接連 Pod IP。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p><code>notes.local</code> 不存在於任何 DNS。Mac 的 <code>/etc/hosts</code> 手動寫一行 <code>192.168.64.5 notes.local notes-staging.local</code>，瀏覽器解析完就對 VM 的 80 port 開 TCP 連線，Host header 帶著原本的網址。</p>
+<p>VM 的 80 port 是 ServiceLB 開的 hostPort，它把封包轉給 kube-system 裡的 Traefik。Traefik 手上有所有 namespace 的 Ingress 規則，先比 host：<code>notes.local</code> 對到 notes-production 的 Ingress，<code>notes-staging.local</code> 對到 notes-staging 的。host 都對不到就回 Traefik 自己的 <code>404 page not found</code>。</p>
+<p>接著比路徑。<code>/api/records</code> 同時符合 <code>/api</code> 與 <code>/</code>，Traefik 用最長前綴，所以 <code>/api</code> 勝出，交給 notes-api:3000；其他路徑都落到 notes-web:80。Traefik 不走 ClusterIP，它直接讀 Service 的 endpoints，連 Pod IP。</p>
+<p>這樣設計讓前後端在瀏覽器眼中是同一個 origin。前端只寫 <code>fetch('/api/records')</code>，不用處理 CORS，也不用注入 API 位址。本機開發時 <code>vite.config.js</code> 的 proxy 做同樣的事。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="BROWSER TRA NS_P WEB_P API_P"></div><figcaption>位置：Mac 上的瀏覽器、Traefik（k3s 內建 Ingress controller）、namespace notes-production、notes-production › notes-web、notes-production › notes-api</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>/etc/hosts</dt><dd>Mac 本機的名稱對照表，優先於 DNS。notes.local 能用全靠這一行。</dd></div><div><dt>Ingress</dt><dd>描述「哪個 host + 路徑送給哪個 Service」的規則。本身不處理流量，由 Traefik 讀取並執行。</dd></div><div><dt>pathType: Prefix</dt><dd>以路徑段為單位的前綴比對。多條都符合時，Traefik 選最長的那條。</dd></div><div><dt>Host header</dt><dd>HTTP request 帶的原始網址名稱。IP 相同時，Traefik 只能靠它分辨是哪個環境。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant B as 瀏覽器（Mac）
+    participant L as ServiceLB（VM :80）
+    participant T as Traefik
+    participant W as notes-web Pod（nginx）
+    participant A as notes-api Pod（Express）
+    B->>B: /etc/hosts：notes.local → 192.168.64.5
+    B->>L: TCP 192.168.64.5:80，Host: notes.local
+    L->>T: svclb 轉給 kube-system 的 Traefik
+    T->>T: 比對 host：notes.local → notes-production 的 Ingress
+    alt GET /
+        T->>T: 只符合 / → backend notes-web:80
+        T->>W: 直接連 endpoints 裡的 Pod IP:80
+        W->>W: try_files $uri $uri/ /index.html
+        W-->>B: 200 index.html（Cache-Control: no-cache）
+    else GET /api/records（index.html 載入後 Vue 發的 fetch）
+        T->>T: /api 與 / 都符合，/api 較長 → notes-api:3000
+        T->>A: 直接連 endpoints 裡的 Pod IP:3000
+        A->>A: app.get('/api/records') 回記憶體裡的陣列
+        A-->>B: 200 JSON
+    end
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0 1" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md · Phase 6 從 Mac 的瀏覽器打進去</div>
+          <pre><code><span>multipass info k3s --format csv | tail -1 | cut -d, -f3    # 例如 192.168.64.5</span>
+<span></span>
+<span>sudo vi /etc/hosts</span>
+<span># 加一行（IP 換成上面查到的）：</span>
+<span class="hl"> # 192.168.64.5  notes.local notes-staging.local</span></code></pre>
+          <p class="snip-why">整條路的起點。這行不在任何 repo 的 manifest 裡，只存在 Mac 本機。</p>
+        </div>
+        <div class="snip" data-steps="3" tabindex="0">
+          <div class="snip-file">notes-deploy · overlays/production/kustomization.yaml</div>
+          <pre><code><span>namespace: notes-production</span>
+<span>…</span>
+<span>patches:</span>
+<span>- patch: |</span>
+<span>    - op: replace</span>
+<span class="hl">       path: /spec/rules/0/host</span>
+<span class="hl">       value: notes.local</span>
+<span>  target:</span>
+<span>    kind: Ingress</span>
+<span>    name: notes</span></code></pre>
+          <p class="snip-why">base 的 host 被 patch 成環境專屬的值，Traefik 靠它分辨兩個 namespace。</p>
+        </div>
+        <div class="snip" data-steps="4 8" tabindex="0">
+          <div class="snip-file">notes-deploy · base/ingress.yaml</div>
+          <pre><code><span>      http:</span>
+<span>        paths:</span>
+<span>          # 順序在 Traefik 不重要，它用「最長前綴優先」：</span>
+<span>          # /api/records 同時符合 /api 與 /，但 /api 比較長，所以由 api 接走。</span>
+<span class="hl">           - path: /api</span>
+<span>            pathType: Prefix</span>
+<span>            backend:</span>
+<span>              service:</span>
+<span class="hl">                 name: notes-api</span>
+<span>                port:</span>
+<span>                  number: 3000</span>
+<span class="hl">           - path: /</span>
+<span>            pathType: Prefix</span>
+<span>            backend:</span>
+<span>              service:</span>
+<span class="hl">                 name: notes-web</span>
+<span>                port:</span>
+<span>                  number: 80</span></code></pre>
+          <p class="snip-why">兩條 Prefix 規則。順序不重要，最長前綴優先。</p>
+        </div>
+        <div class="snip" data-steps="6 7" tabindex="0">
+          <div class="snip-file">frontend/nginx.conf</div>
+          <pre><code><span>    # 這份寫死了 assets 的 hash 檔名，換版後必須立刻拿到新的</span>
+<span>    location = /index.html {</span>
+<span class="hl">         add_header Cache-Control "no-cache";</span>
+<span>    }</span>
+<span></span>
+<span>    # 關鍵：找不到實體檔案就回 index.html，路由交給 vue-router</span>
+<span>    location / {</span>
+<span class="hl">         try_files $uri $uri/ /index.html;</span>
+<span>    }</span></code></pre>
+          <p class="snip-why">web Pod 裡的最後一站。/ 命中目錄的 index.html；深層路由找不到檔案也落到 /index.html。</p>
+        </div>
+        <div class="snip" data-steps="8 10 11" tabindex="0">
+          <div class="snip-file">frontend/src/store.js + api/server.js</div>
+          <pre><code><span>// frontend/src/store.js</span>
+<span>export async function fetchRecords() {</span>
+<span class="hl">   const data = await json(await fetch('/api/records'))</span>
+<span>  …</span>
+<span>}</span>
+<span></span>
+<span>// api/server.js</span>
+<span class="hl">   app.get('/api/records', (req, res) =&gt; res.json(records))</span></code></pre>
+          <p class="snip-why">前端只寫相對路徑；Express 那邊的路由路徑完整包含 /api，因為 Traefik 不會剝掉前綴。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">curl -s -H 'Host: notes-staging.local' http://192.168.64.5/api/health</span>
+<span class="cm"># 示意輸出（依 api/server.js 推得）</span>
+{"status":"ok"}</pre><p>跳過 /etc/hosts，手動帶 Host header。這條通、瀏覽器不通，問題就在 Mac 的名稱解析。</p></div><div class="term"><pre><span class="cmd">curl -o /dev/null -s -w '深層路由 %{http_code}\n' http://notes.local/records/1</span>
+<span class="cm"># 示意輸出（docs 記載預期為 200）</span>
+深層路由 200</pre><p>docs/gitops-roadmap.md Phase 8 的驗法。這個路徑在 image 裡沒有對應檔案，回 200 代表 try_files 生效。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p>路由規則的來源是 notes-deploy <code>4b60f81</code>「feat: add notes-api deployment and route /api through the ingress」（2026-09-25）。commit 訊息寫明：前後端在瀏覽器眼中是同一個 origin，前端直接 <code>fetch('/api/records')</code>，沒有 CORS 也沒有 API base URL 要注入。</p>
+<p>對應的前端改動在 liaooliver/notes#34（<code>05e38e5</code>）：store.js 改打 <code>/api/*</code>，vite 的 <code>server.proxy</code> 在本機模擬同樣的分流。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>瀏覽器連不上、逾時：先查 /etc/hosts 的 IP 還是不是 VM 現在的 IP。</li><li>Traefik 白底的 404 page not found：host 對不到任何 Ingress，用 kubectl get ingress -A 對 HOSTS 欄。</li><li>Express 的路由要寫完整的 /api/...，Traefik 預設不會剝前綴；想剝要另外掛 stripPrefix middleware。</li></ul></div>
+</article>
+
+<article class="kp" id="k8s-06">
+  <div class="kp-head"><span class="id">K8S-06</span><span class="where">notes › Dockerfile / frontend/nginx.conf / api/Dockerfile / api/server.js</span></div>
+  <h2>容器裡面：nginx 與 Express 各自在做什麼</h2>
+  <p class="tldr">web image 是 nginx 加上 build 好的 Vue 靜態檔，靠 try_files 撐 SPA；api image 是單層 node:22-alpine 跑 Express，資料只在記憶體。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>web image 沒有 Node runtime。<code>nginx:1.30-alpine</code> 上面 COPY 兩樣東西：自己的 <code>nginx.conf</code> 和 CI 的 build job 產出的 <code>dist/</code>。容器啟動就是 nginx 聽 80 port。瀏覽器要 <code>/records/42</code> 時，nginx 在檔案系統找不到，<code>try_files</code> 回 <code>index.html</code>，JS 載入後再由 vue-router 決定畫面。</p>
+<p>api image 是 <code>node:22-alpine</code>，CMD 是 <code>node api/server.js</code>，聽 3000。Dockerfile 有兩個不直觀的地方：build context 是 repo 根目錄（npm workspaces 只有根目錄那份 lockfile，<code>npm ci</code> 還要看到每個 workspace 的 package.json）；<code>--ignore-scripts</code> 不能省（根目錄的 <code>prepare: husky</code> 在 <code>--omit=dev</code> 之後會 exit 127）。裝完相依後把 npm 本身刪掉，因為 Trivy 在它 bundle 的套件裡掃到 8 個 HIGH。</p>
+<p>Express 把資料放在模組層級的 <code>records</code> 陣列裡，沒有 volume。Pod 被刪、被 rolling update 換掉、或被 OOMKilled，陣列就回到初始那一筆。這是刻意的：容器應該可以隨時丟掉重建，要持久化得用 StatefulSet + PV 或 cluster 外的資料庫。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="WEB_S WEB_P API_S API_P"></div><figcaption>位置：notes-staging › notes-web、notes-production › notes-web、notes-staging › notes-api、notes-production › notes-api</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>try_files</dt><dd>nginx 依序嘗試幾個路徑，都找不到就用最後一個。SPA 靠它把任何路徑都回 index.html。</dd></div><div><dt>build context</dt><dd>docker build 時送進 builder 的目錄。COPY 只能拿 context 裡的檔案。</dd></div><div><dt>--ignore-scripts</dt><dd>npm ci 不執行任何 lifecycle script（prepare、postinstall）。</dd></div><div><dt>stateless</dt><dd>Pod 不保存需要留下來的狀態。這個專案的 api 資料在 Pod 重建時消失。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">兩個 image 的組成與啟動後的行為 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"wb","c":0,"r":0,"l":["nginx:1.30-alpine","+ apk upgrade libexpat"]},{"id":"wc","c":1,"r":0,"l":["COPY nginx.conf","→ conf.d/default.conf"]},{"id":"wd","c":2,"r":0,"l":["COPY dist/","build job 的 artifact"]},{"id":"wr","c":3,"r":0,"l":["nginx :80","try_files → /index.html"]},{"id":"ctx","c":1,"r":1,"l":["context = repo 根目錄","lockfile + 兩份 package.json"]},{"id":"ab","c":0,"r":2,"l":["node:22-alpine","WORKDIR /app"]},{"id":"ai","c":1,"r":2,"l":["npm ci","--omit=dev --ignore-scripts"]},{"id":"arm","c":2,"r":2,"l":["rm npm / npx","去掉 8 個 HIGH"]},{"id":"ar","c":3,"r":2,"l":["node api/server.js",":3000 · /api/health"]},{"id":"mem","c":4,"r":2,"l":["records[]（記憶體）","Pod 重建就回到初始值"]}],"edges":[{"id":"w1","from":"wb","to":"wc"},{"id":"w2","from":"wc","to":"wd"},{"id":"w3","from":"wd","to":"wr","label":"預設 CMD"},{"id":"a0","from":"ctx","to":"ai","label":"COPY"},{"id":"a1","from":"ab","to":"ai"},{"id":"a2","from":"ai","to":"arm"},{"id":"a3","from":"arm","to":"ar","label":"COPY server.js · CMD"},{"id":"a4","from":"ar","to":"mem"}],"steps":[{"n":["wb","wc","wd"],"e":["w1","w2"],"t":"web image：nginx 底層加兩個 COPY，沒有 Node、沒有編譯步驟"},{"n":["wr"],"e":["w3"],"t":"nginx 聽 80；找不到實體檔案就回 index.html，路由交給 vue-router"},{"n":["ab","ctx","ai"],"e":["a0","a1"],"t":"api image：context 是 repo 根目錄，才拿得到唯一那份 package-lock.json"},{"n":["ai","arm"],"e":["a2"],"t":"--ignore-scripts 擋掉 husky 的 prepare；裝完把 npm 刪掉"},{"n":["ar","mem"],"e":["a3","a4"],"t":"node api/server.js 聽 3000；資料只在記憶體，Pod 重建就沒了"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0" tabindex="0">
+          <div class="snip-file">Dockerfile</div>
+          <pre><code><span class="hl"> FROM nginx:1.30-alpine</span>
+<span>…</span>
+<span>RUN apk upgrade --no-cache libexpat</span>
+<span></span>
+<span># 覆蓋 nginx 預設的 server 設定，加上 SPA fallback</span>
+<span class="hl"> COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf</span>
+<span></span>
+<span># 把 build 好的靜態檔放到 nginx 預設 docroot</span>
+<span class="hl"> COPY dist/ /usr/share/nginx/html/</span>
+<span></span>
+<span># nginx:alpine 已經 EXPOSE 80 且有預設 CMD，不用再寫</span></code></pre>
+          <p class="snip-why">前端 image 全部內容。單層，不做 multi-stage，理由是 multi-arch 下 arm64 那份得在 QEMU 裡跑 Node（Phase 8）。</p>
+        </div>
+        <div class="snip" data-steps="1" tabindex="0">
+          <div class="snip-file">frontend/nginx.conf</div>
+          <pre><code><span>server {</span>
+<span class="hl">     listen 80;</span>
+<span>    root /usr/share/nginx/html;</span>
+<span></span>
+<span>    location /assets/ {</span>
+<span>        add_header Cache-Control "public, max-age=31536000, immutable";</span>
+<span>    }</span>
+<span>    location = /index.html {</span>
+<span>        add_header Cache-Control "no-cache";</span>
+<span>    }</span>
+<span>    location / {</span>
+<span class="hl">         try_files $uri $uri/ /index.html;</span>
+<span>    }</span>
+<span>}</span></code></pre>
+          <p class="snip-why">assets 長快取、index.html 不快取、其他路徑 fallback 到 index.html。</p>
+        </div>
+        <div class="snip" data-steps="2 3" tabindex="0">
+          <div class="snip-file">api/Dockerfile</div>
+          <pre><code><span>FROM node:22-alpine</span>
+<span>WORKDIR /app</span>
+<span>…</span>
+<span class="hl"> COPY package.json package-lock.json ./</span>
+<span>COPY api/package.json api/</span>
+<span class="hl"> COPY frontend/package.json frontend/</span>
+<span>…</span>
+<span class="hl"> RUN npm ci --omit=dev --ignore-scripts --workspace notes-api</span>
+<span>…</span>
+<span class="hl"> RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx</span>
+<span></span>
+<span>COPY api/server.js api/</span>
+<span></span>
+<span>EXPOSE 3000</span>
+<span>CMD ["node", "api/server.js"]</span></code></pre>
+          <p class="snip-why">兩個非顯而易見之處都在這幾行：COPY frontend/package.json 和 --ignore-scripts。</p>
+        </div>
+        <div class="snip" data-steps="4" tabindex="0">
+          <div class="snip-file">api/server.js</div>
+          <pre><code><span>// 資料只放在記憶體：pod 一重建就全部消失。</span>
+<span>// 這是刻意的（見 gitops-roadmap 的 Phase 9-e），不是還沒做完——</span>
+<span>// 容器本來就該被當成可拋棄的東西，要持久化得用 StatefulSet + PV，那是另一個主題。</span>
+<span class="hl"> const records = [{ id: 1, date: '2026-09-17', title: 'Fix login bug' }]</span>
+<span>let nextId = 2</span>
+<span>…</span>
+<span>if (process.argv[1] === fileURLToPath(import.meta.url)) {</span>
+<span class="hl">   const port = process.env.PORT || 3000</span>
+<span>  createApp().listen(port, () =&gt; console.log(`notes-api listening on ${port}`))</span>
+<span>}</span></code></pre>
+          <p class="snip-why">資料就是一個 JS 陣列。行程重啟，陣列回到只有一筆的初始值。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">curl -s -X POST http://notes-staging.local/api/records -H 'Content-Type: application/json' -d '{"date":"2026-09-25","title":"會不見的紀錄"}'
+kubectl -n notes-staging delete pod -l component=api
+curl -s http://notes-staging.local/api/records</span>
+<span class="cm"># 示意輸出（依 api/server.js 推得）</span>
+{"id":2,"date":"2026-09-25","title":"會不見的紀錄"}
+pod "notes-api-7d9f8b6c5d-x2k4p" deleted
+[{"id":1,"date":"2026-09-17","title":"Fix login bug"}]</pre><p>docs/gitops-roadmap.md 9-e 的實驗。ReplicaSet 立刻補一個新 Pod，新行程的 records 只有初始那一筆。</p></div><div class="term"><pre><span class="cmd">kubectl -n notes-staging logs deploy/notes-api</span>
+<span class="cm"># 示意輸出（依 api/server.js 推得）</span>
+notes-api listening on 3000</pre><p>Express 啟動時唯一會印的一行。看不到它，Pod 就不會通過 readinessProbe。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p><b>try_files</b>：liaooliver/notes#26 的 commit 寫著「Refreshing /records/:id asked nginx for a file that vite never emits, so it returned 404」。Vue 化（#25）刻意先不加 fallback，讓 404 出現一次再修。</p>
+<p><b>--ignore-scripts</b>：liaooliver/notes#34（<code>05e38e5</code>）的訊息記錄「npm ci 必須加 --ignore-scripts，否則根 package.json 的 husky prepare 會在 --omit=dev 之後噴 exit 127」。</p>
+<p><b>刪 npm</b>：liaooliver/notes#39 讓 Trivy 開始掃 image，本機預演時 api image 有 8 個 HIGH，全部來自 <code>node:22-alpine</code> 內附 npm 自己 bundle 的相依（brace-expansion、pacote、sigstore 等），跟專案裝的套件無關。修法是刪掉 npm，而不是把掃描調鬆。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>本機直接 docker build -t notes:local . 會失敗，repo 裡沒有 dist/；要先 npm run build 再 cp -r frontend/dist dist。</li><li>nginx 的快取不要用 expires，它會多送一個 Cache-Control，跟 add_header 的那個打架。</li><li>從首頁點連結正常、直接貼網址或按 F5 就 404，幾乎一定是 nginx 少了 try_files。</li></ul></div>
+</article>
+
+<article class="kp" id="k8s-07">
+  <div class="kp-head"><span class="id">K8S-07</span><span class="where">k3s › kubelet › containerd › ghcr.io</span></div>
+  <h2>image pull：kubelet 怎麼從 GHCR 拿到 arm64 那一份</h2>
+  <p class="tldr">public package 用匿名 token 就拉得到，不需要 imagePullSecrets；tag 背後是 image index，containerd 自己挑 linux/arm64。tag 不存在時 restart 沒有用。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>Pod 排到 node 之後，kubelet 請 containerd 拉 image。tag 是 <code>sha-…</code> 時 imagePullPolicy 預設 IfNotPresent，本機有就不拉。containerd 先向 <code>ghcr.io/token</code> 要一個匿名的 pull token，再拿 tag 去要 manifest。<code>liaooliver/notes</code> 是 public repo，GHCR package 也是 public，匿名 token 就夠，所以兩份 Deployment 的 <code>imagePullSecrets</code> 都維持註解。</p>
+<p>CI 用 buildx 同時出 amd64 與 arm64，GHCR 上的 tag 指向一份 image index，裡面掛兩個 digest。containerd 知道自己在 linux/arm64 上，只下載那個 digest 的 layer。manifest 裡永遠只寫 tag，不寫架構。如果 image 只有 amd64，錯誤會是 <code>no matching manifest for linux/arm64/v8</code>，完全不提示是 CI 那邊少了一行 platforms。</p>
+<p>拉失敗時 Pod 先是 <code>ErrImagePull</code>，重試間隔逐次拉長後變成 <code>ImagePullBackOff</code>。Phase 9 那天的原因是 image 沒有 tag：沒寫 tag 等於 <code>:latest</code>，GHCR 上沒有這個 tag。<code>kubectl rollout restart</code> 只在 template 加一個 <code>restartedAt</code> annotation，image 欄位沒變，新 Pod 拉的還是同一個不存在的東西。要改的是 manifest 裡的 tag，也就是讓 Argo CD 讀到後面那筆 bump commit。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="GHCR K3S API_S WEB_S"></div><figcaption>位置：GHCR：ghcr.io/liaooliver/notes、notes-api、k3s cluster（Multipass VM）、notes-staging › notes-api、notes-staging › notes-web</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>image index</dt><dd>又叫 manifest list。一個 tag 底下掛多個平台各自的 image digest。</dd></div><div><dt>ImagePullBackOff</dt><dd>拉 image 失敗，kubelet 已經進入拉長間隔重試的狀態。多半是 image 或 tag 不存在、或沒有權限。</dd></div><div><dt>imagePullSecrets</dt><dd>Pod 拉 private image 時用的帳密。public package 不需要。</dd></div><div><dt>imagePullPolicy</dt><dd>何時重新拉 image。有明確 tag 時預設 IfNotPresent，沒 tag 或 :latest 時預設 Always。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant A as API server
+    participant K as kubelet
+    participant C as containerd
+    participant G as GHCR
+    participant D as Developer
+    A->>K: 新 Pod 排到 node k3s，image = notes-api:sha-…
+    K->>C: PullImage（本機沒有這個 tag）
+    C->>G: GET /token?scope=repository:liaooliver/notes-api:pull（匿名）
+    G-->>C: token（package 是 public，不需要 imagePullSecrets）
+    C->>G: GET /v2/liaooliver/notes-api/manifests/sha-…
+    alt tag 存在
+        G-->>C: image index：linux/amd64、linux/arm64 兩個 digest
+        C->>C: 挑 linux/arm64，只下載那個 digest 的 layer
+        C-->>K: image 就緒 → 建容器、啟動
+    else tag 不存在（Phase 9 當天：沒寫 tag = :latest）
+        G-->>C: manifest unknown
+        K->>A: ErrImagePull → ImagePullBackOff
+        D->>A: kubectl rollout restart
+        A->>K: 新 Pod，image 欄位一字未變
+        K->>C: 拉同一個不存在的 image，照樣失敗
+        Note over D,G: 要改的是 manifest 的 tag：hard refresh 讓 Argo CD 讀到 bump commit
+    end
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0 3" tabindex="0">
+          <div class="snip-file">notes-deploy · base/api-deployment.yaml</div>
+          <pre><code><span>    spec:</span>
+<span>      # repo 是 public 時 GHCR package 也可以是 public，不需要 secret，先註解掉。</span>
+<span>      # 改成 private 時，web 與 api 兩份 Deployment 要一起取消註解。</span>
+<span class="hl">       # imagePullSecrets:</span>
+<span class="hl">       #   - name: ghcr-pull</span>
+<span>      containers:</span>
+<span>        - name: api</span>
+<span class="hl">           image: ghcr.io/liaooliver/notes-api   # 另一個 image，tag 由 overlay 覆寫</span></code></pre>
+          <p class="snip-why">base 只寫 image 名稱，不寫 tag。imagePullSecrets 是註解狀態，因為 package 是 public。</p>
+        </div>
+        <div class="snip" data-steps="5 6" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>      - name: Build and Push</span>
+<span>        id: push</span>
+<span>        uses: docker/build-push-action@v7</span>
+<span>        with:</span>
+<span>          context: .</span>
+<span>          file: ${{ matrix.svc.dockerfile }}</span>
+<span class="hl">           platforms: linux/amd64,linux/arm64   # ← 關鍵的一行</span>
+<span>          push: true</span>
+<span>          tags: ${{ steps.meta.outputs.tags }}</span></code></pre>
+          <p class="snip-why">image index 裡為什麼有 arm64：CI 的 buildx 一次出兩個平台。</p>
+        </div>
+        <div class="snip" data-steps="2 3 4 5" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md · 9-d</div>
+          <pre><code><span class="hl"> T=$(curl -s "https://ghcr.io/token?scope=repository:liaooliver/notes-api:pull" | jq -r .token)</span>
+<span>curl -s -H "Authorization: Bearer $T" \</span>
+<span class="hl">      -H 'Accept: application/vnd.oci.image.index.v1+json' \</span>
+<span class="hl">      "https://ghcr.io/v2/liaooliver/notes-api/manifests/sha-&lt;40 碼&gt;" | jq '.manifests[].platform'</span></code></pre>
+          <p class="snip-why">用 curl 重演 containerd 做的前兩步：匿名 token 加上要 image index。回得出兩筆 platform 就同時證明是 public 與 multi-arch。</p>
+        </div>
+        <div class="snip" data-steps="8 9 10 11 12 13" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md · 9-f 套用順序（踩過一次）</div>
+          <pre><code><span>① notes 的 PR 合進 staging  → CI build 出 notes-api image，bump commit 幫 overlay 加上 tag</span>
+<span>② 才 push notes-deploy 的結構 commit</span>
+<span>…</span>
+<span class="hl"> 反過來的話，Argo CD 會先同步到「有 `api-deployment.yaml` 但 overlay 還沒有對應 tag」的狀態，image 變成 `ghcr.io/liaooliver/notes-api`（等於 `:latest`，GHCR 上不存在），pod 卡在 `ImagePullBackOff`。此時 `kubectl rollout restart` **沒有用**——spec 沒變，重開幾次都一樣。</span></code></pre>
+          <p class="snip-why">當天的根因與 restart 無效的原因。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">kubectl -n notes-staging describe pod -l component=api</span>
+<span class="cm"># 示意輸出（依 docs/use-cases.md UC-17 的情境推得）</span>
+Events:
+  Type     Reason     From     Message
+  ----     ------     ----     -------
+  Normal   Pulling    kubelet  Pulling image "ghcr.io/liaooliver/notes-api"
+  Warning  Failed     kubelet  Failed to pull image "ghcr.io/liaooliver/notes-api": ... not found
+  Warning  Failed     kubelet  Error: ErrImagePull
+  Normal   BackOff    kubelet  Back-off pulling image "ghcr.io/liaooliver/notes-api"
+  Warning  Failed     kubelet  Error: ImagePullBackOff</pre><p>看 Pulling 那行的 image 字串。沒有 :sha-… 就是 overlay 還沒有 tag；有 tag 但 not found，就去 GHCR 確認 package 可見性。</p></div><div class="term"><pre><span class="cmd">docker buildx imagetools inspect ghcr.io/liaooliver/notes:staging</span>
+<span class="cm"># 示意輸出（依 ci.yml 的 platforms 推得）</span>
+Name:      ghcr.io/liaooliver/notes:staging
+MediaType: application/vnd.oci.image.index.v1+json
+Manifests:
+  Platform:  linux/amd64
+  Platform:  linux/arm64</pre><p>在 Mac 上確認 tag 底下有 linux/arm64。沒有的話 k3s 會報 no matching manifest。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p><b>Phase 9 上線那天順序反了。</b>notes-deploy 的結構 commit <code>4b60f81</code>（新增 api-deployment.yaml）在 2026-09-25 15:21:54 UTC 推上去，第一筆替 overlay 加上 <code>notes-api</code> tag 的 bump commit <code>377d045</code> 在 15:42:23 UTC。中間約 20 分鐘，overlay 裡沒有 notes-api 的 tag。</p>
+<p>諷刺的是 <code>4b60f81</code> 的 commit 訊息自己就寫了「套用順序是先讓 notes 的 CI 跑過一次 bump，再 push 這個 commit，反過來的話 api 的 image 沒有 tag，pod 會卡在 ImagePullBackOff」。當時 Argo CD 還停在結構 commit，<code>rollout restart</code> 無效，最後靠 <code>argocd.argoproj.io/refresh=hard</code> 讓它讀到 bump commit（docs/use-cases.md UC-17、gitops-roadmap 第 5 節）。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>GHCR 上 notes 與 notes-api 是兩個獨立 package，可見性各自設定；notes-api 第一次 push 後要手動改成 public。</li><li>只有 api 卡 ImagePullBackOff 時，症狀是「畫面正常、打 API 才壞」，很容易先去翻 Express 程式碼。</li><li>改成 private 時要先建 ghcr-pull secret 再取消註解，而且 web 與 api 兩份 Deployment 都要改。</li><li>rollout restart 只換 annotation，不換 image；image 不存在的問題它解決不了。</li></ul></div>
+</article>
+
+<article class="kp" id="k8s-08">
+  <div class="kp-head"><span class="id">K8S-08</span><span class="where">notes-deploy › base/*-deployment.yaml › resources</span></div>
+  <h2>resources：requests 給 scheduler 看，limits 給 kernel 執行</h2>
+  <p class="tldr">scheduler 只拿 requests 算放不放得下；limits 寫進 cgroup，CPU 超過會被限速，記憶體超過會被 OOMKilled。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p><code>requests</code> 是排程用的預約量。scheduler 把 Node 上所有 Pod 的 requests 加總，新 Pod 的 requests 放得進剩餘的 allocatable 才排上去，跟 Pod 實際用多少無關。CPU requests 另外換算成 cgroup 的權重，CPU 滿載時按比例分。</p>
+<p><code>limits</code> 由 kubelet 交給 containerd 寫進容器的 cgroup。CPU 超過 limit 會被 CFS quota 限速，行程變慢但不會死。記憶體超過 limit，kernel 的 OOM killer 直接殺掉容器裡的行程，狀態顯示 <code>OOMKilled</code>、exit code 137，kubelet 依 restartPolicy 重啟容器，反覆發生就變成 <code>CrashLoopBackOff</code>。</p>
+<p>這個專案的值很小：web 預約 10m CPU / 16Mi，上限 100m / 64Mi；api 預約 10m / 32Mi，上限 200m / 128Mi。兩個 namespace 加起來 requests 只有 96Mi，limits 上限 384Mi，在 6 GB 的 VM 裡幾乎沒有存在感。requests 小於 limits，所以 QoS class 是 Burstable。</p>
+<p>api 的 limit 跟記憶體資料放在一起看才有意義：<code>records</code> 陣列只增不減，理論上一直 POST 到超過 128Mi，容器會被 OOMKilled，重啟後資料全部歸零。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="K3S WEB_S API_S WEB_P API_P"></div><figcaption>位置：k3s cluster（Multipass VM）、notes-staging › notes-web、notes-staging › notes-api、notes-production › notes-web、notes-production › notes-api</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>requests</dt><dd>scheduler 用來判斷 Pod 能不能排上某個 Node 的預約量。</dd></div><div><dt>limits</dt><dd>寫進 cgroup 的硬上限。CPU 超過被限速，記憶體超過被殺。</dd></div><div><dt>OOMKilled</dt><dd>容器因記憶體超過 limit 被 kernel 殺掉的終止原因，exit code 137。</dd></div><div><dt>QoS class</dt><dd>依 requests/limits 分成 Guaranteed、Burstable、BestEffort；Node 記憶體不足時 BestEffort 最先被驅逐。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">requests 與 limits 在 runtime 的去向 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"spec","c":0,"r":1,"l":["Pod spec","requests 小於 limits → Burstable"]},{"id":"sch","c":1,"r":0,"l":["scheduler","加總 requests ≤ allocatable"]},{"id":"node","c":2,"r":0,"l":["Node k3s","6 GB VM"]},{"id":"kl","c":1,"r":2,"l":["kubelet → containerd","寫進容器 cgroup"]},{"id":"cg","c":2,"r":2,"l":["cgroup","cpu.max · memory.max"]},{"id":"thr","c":3,"r":1,"l":["CPU 超過 limit","被 throttle，變慢不會死"]},{"id":"oom","c":3,"r":3,"l":["記憶體超過 limit","OOMKilled · exit 137"]},{"id":"rs","c":4,"r":3,"l":["kubelet 重啟容器","反覆發生 → CrashLoopBackOff"]}],"edges":[{"id":"e1","from":"spec","to":"sch","label":"requests"},{"id":"e2","from":"sch","to":"node","label":"排上去"},{"id":"e3","from":"spec","to":"kl","label":"limits"},{"id":"e4","from":"kl","to":"cg"},{"id":"e5","from":"cg","to":"thr"},{"id":"e6","from":"cg","to":"oom"},{"id":"e7","from":"oom","to":"rs"}],"steps":[{"n":["spec"],"e":[],"t":"Pod spec 寫了 requests 與 limits；兩者不相等，QoS 是 Burstable"},{"n":["sch","node"],"e":["e1","e2"],"t":"scheduler 只看 requests：已排 Pod 的 requests 加總要放得下"},{"n":["kl","cg"],"e":["e3","e4"],"t":"Pod 啟動時 kubelet 把 limits 交給 containerd，寫進 cgroup"},{"n":["thr"],"e":["e5"],"t":"CPU 用超過 limit：被 CFS quota 限速，程式變慢但不會被殺"},{"n":["oom","rs"],"e":["e6","e7"],"t":"記憶體超過 limit：OOM killer 殺掉行程，kubelet 重啟容器"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0 1 2" tabindex="0">
+          <div class="snip-file">notes-deploy · base/web-deployment.yaml</div>
+          <pre><code><span>          readinessProbe:</span>
+<span>            httpGet:</span>
+<span>              path: /</span>
+<span>              port: 80</span>
+<span class="hl">           resources:</span>
+<span class="hl">             requests: { cpu: 10m, memory: 16Mi }</span>
+<span class="hl">             limits: { cpu: 100m, memory: 64Mi }</span></code></pre>
+          <p class="snip-why">nginx 送靜態檔，需求極小。</p>
+        </div>
+        <div class="snip" data-steps="0 4" tabindex="0">
+          <div class="snip-file">notes-deploy · base/api-deployment.yaml</div>
+          <pre><code><span class="hl">           resources:</span>
+<span class="hl">             requests: { cpu: 10m, memory: 32Mi }</span>
+<span class="hl">             limits: { cpu: 200m, memory: 128Mi }</span>
+<span>      # 沒有 volume：資料就放在 Express 的記憶體裡，pod 一重建就全沒了。</span>
+<span>      # 這是刻意的——容器本來就該被當成可拋棄的，要持久化得用 StatefulSet + PV。</span></code></pre>
+          <p class="snip-why">Node 行程本身比 nginx 大，limit 給到 128Mi。下面兩行註解說明為什麼沒有 volume。</p>
+        </div>
+        <div class="snip" data-steps="1" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md · 0.2 記憶體預算</div>
+          <pre><code><span>│ ┌────────── Multipass VM（6 GB）──────────────┐ │</span>
+<span class="hl"> │ │ k3s 本體（含 Traefik、CoreDNS）  ~600 MB    │ │</span>
+<span class="hl"> │ │ Argo CD（7 個元件，最肥的一塊）  ~1.5 GB    │ │</span>
+<span>│ │ notes-staging                     ~30 MB    │ │</span>
+<span>│ │ notes-production                  ~60 MB    │ │</span>
+<span>│ │ 餘裕                             ~3.8 GB    │ │</span>
+<span>│ └─────────────────────────────────────────────┘ │</span></code></pre>
+          <p class="snip-why">scheduler 眼中的 Node 就是這台 6 GB 的 VM；Argo CD 佔掉的量遠大於應用。</p>
+        </div>
+        <div class="snip" data-steps="4" tabindex="0">
+          <div class="snip-file">api/server.js</div>
+          <pre><code><span>  app.post('/api/records', (req, res) =&gt; {</span>
+<span>    const { date, title } = req.body ?? {}</span>
+<span>    if (!date || !title) return res.status(400).json({ error: 'date and title are required' })</span>
+<span>    const record = { id: nextId++, date, title }</span>
+<span class="hl">     records.push(record)</span>
+<span>    res.status(201).json(record)</span>
+<span>  })</span></code></pre>
+          <p class="snip-why">記憶體只增不減的來源。每次 POST 都往陣列裡推一筆。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">kubectl describe node k3s</span>
+<span class="cm"># 示意輸出（requests/limits 加總依 manifest 推得；只列 notes-* 的部分）</span>
+Non-terminated Pods:
+  Namespace          Name            CPU Requests  CPU Limits  Memory Requests  Memory Limits
+  notes-production   notes-api-…     10m (0%)      200m (5%)   32Mi (0%)        128Mi (2%)
+  notes-production   notes-web-…     10m (0%)      100m (2%)   16Mi (0%)        64Mi (1%)
+  notes-staging      notes-api-…     10m (0%)      200m (5%)   32Mi (0%)        128Mi (2%)
+  notes-staging      notes-web-…     10m (0%)      100m (2%)   16Mi (0%)        64Mi (1%)
+Allocated resources:
+  …</pre><p>Allocated resources 的 requests 百分比接近 100% 時，新 Pod 會 Pending，事件寫 Insufficient memory。</p></div><div class="term"><pre><span class="cmd">kubectl -n notes-staging top pods</span>
+<span class="cm"># 示意輸出（依 k3s 內建 metrics-server 推得，數值為虛構）</span>
+NAME                         CPU(cores)   MEMORY(bytes)
+notes-api-7d9f8b6c5d-x2k4p   1m           20Mi
+notes-web-6c9d7f5b8d-q8m2n   0m           3Mi</pre><p>實際用量。拿它跟 limits 比，看離 OOMKilled 還有多遠。</p></div><div class="term"><pre><span class="cmd">kubectl -n notes-staging get pod -l component=api -o jsonpath='{.items[0].status.containerStatuses[0].lastState}'</span>
+<span class="cm"># 示意輸出（假設發生過一次 OOM）</span>
+{"terminated":{"exitCode":137,"reason":"OOMKilled",...}}</pre><p>RESTARTS 欄不是 0 時查這個，reason 會說是 OOMKilled 還是行程自己掛掉。</p></div></div>
+  
+  <div class="pitfalls"><b>坑</b><ul><li>requests 寫太大，Pod 會卡 Pending（Insufficient memory），即使 Node 實際上還很空。</li><li>記憶體 limit 太小不會報設定錯誤，只會在 runtime 反覆 OOMKilled，看起來像程式不穩定。</li><li>docs 裡沒有 OOMKilled 的實際紀錄；這裡的 OOM 情境是依 limits 與 server.js 推演的。</li></ul></div>
+</article>
+
+<article class="kp" id="k8s-09">
+  <div class="kp-head"><span class="id">K8S-09</span><span class="where">k3s › Traefik › Ingress /api › Service notes-api › endpoints</span></div>
+  <h2>Traefik 回 no available server：從外往內排錯</h2>
+  <p class="tldr">no available server 代表路由有對到，但那個 Service 的 endpoints 是空的：不是 selector 對不到 Pod，就是 Pod 還沒 Ready。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>Traefik 的 Kubernetes Ingress provider 持續 watch 每個被 Ingress 引用的 Service 的 endpoints，拿裡面的 Pod IP 當作 server 清單。request 進來、host 與路徑都對上了，清單卻是空的，Traefik 就回 HTTP 503，內文是 <code>no available server</code>。</p>
+<p>endpoints 為空只有兩種原因。第一是 selector 對不到任何 Pod：label 拼錯、少一個、或 Pod 根本不存在。第二是 Pod 存在但不 Ready：readinessProbe 沒過，或容器根本沒起來（例如卡在 ImagePullBackOff）。這時 <code>kubectl get service</code> 看起來正常，<code>kubectl get pods</code> 可能還是 Running，只有 endpoints 誠實地是空的。</p>
+<p>排錯順序由外往內。瀏覽器逾時看 <code>/etc/hosts</code>；Traefik 的 <code>404 page not found</code> 看 Ingress 的 host；<code>no available server</code> 或 502 看 endpoints；頁面出來但內容不對，看 Pod 的 image tag。修正一律改 notes-deploy 的 manifest，讓 Argo CD sync；直接 <code>kubectl edit</code> 會被 selfHeal 改回去。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="BROWSER TRA NS_S API_S"></div><figcaption>位置：Mac 上的瀏覽器、Traefik（k3s 內建 Ingress controller）、namespace notes-staging、notes-staging › notes-api</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>no available server</dt><dd>Traefik 在「路由有對到、但後端沒有任何可用 server」時回的 503 內文。</dd></div><div><dt>404 page not found</dt><dd>Traefik 在「host/路徑對不到任何路由」時回的白底頁，跟 nginx 的 404 不同。</dd></div><div><dt>selfHeal</dt><dd>Argo CD 發現 cluster 被手動改動時，自動改回 Git 的版本。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant B as 瀏覽器
+    participant T as Traefik
+    participant E as endpoints notes-api
+    participant P as Pod（component=api）
+    participant D as Developer
+    T->>E: watch Ingress 引用的 Service notes-api
+    E-->>T: 0 個 Ready 位址
+    B->>T: GET /api/records（Host: notes-staging.local）
+    T->>T: 命中 /api → notes-api，server 清單是空的
+    T-->>B: 503 no available server
+    D->>E: kubectl -n notes-staging get endpoints notes-api
+    E-->>D: ENDPOINTS 欄是空的（none）
+    alt Pod 存在但不 Ready
+        D->>P: kubectl describe pod → Readiness probe failed 或 ImagePullBackOff
+        Note over P: /api/health 還沒回 200，或容器根本沒起來
+    else selector 對不到
+        D->>D: 對照 Service 的 selector 與 get pods --show-labels
+    end
+    D->>D: 改 notes-deploy 的 manifest → push → Argo CD sync
+    E-->>T: 出現 Pod IP:3000
+    T->>P: 轉送成功，/api 恢復
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="2 3" tabindex="0">
+          <div class="snip-file">notes-deploy · base/ingress.yaml</div>
+          <pre><code><span class="hl">           - path: /api</span>
+<span>            pathType: Prefix</span>
+<span>            backend:</span>
+<span>              service:</span>
+<span class="hl">                 name: notes-api</span>
+<span>                port:</span>
+<span>                  number: 3000</span></code></pre>
+          <p class="snip-why">Traefik 依這條把 /api 導到 notes-api:3000。路由本身沒問題，問題在它後面。</p>
+        </div>
+        <div class="snip" data-steps="9 10" tabindex="0">
+          <div class="snip-file">notes-deploy · base/api-service.yaml</div>
+          <pre><code><span>spec:</span>
+<span>  selector:</span>
+<span class="hl">     app: notes</span>
+<span class="hl">     component: api        # 少了這行就會連 web 的 pod 一起選到，流量隨機打錯地方</span>
+<span>  ports:</span>
+<span>    - port: 3000</span>
+<span>      targetPort: 3000</span></code></pre>
+          <p class="snip-why">selector 對不到的那條分支，要對照的就是這兩行。</p>
+        </div>
+        <div class="snip" data-steps="1 7 8" tabindex="0">
+          <div class="snip-file">notes-deploy · base/api-deployment.yaml</div>
+          <pre><code><span>          ports:</span>
+<span>            - containerPort: 3000</span>
+<span class="hl">           readinessProbe:</span>
+<span class="hl">             httpGet:</span>
+<span class="hl">               path: /api/health                 # Express 實作的那條</span>
+<span class="hl">               port: 3000</span></code></pre>
+          <p class="snip-why">Pod 不 Ready 的那條分支。probe 打的路徑與 port 要跟 Express 對得上。</p>
+        </div>
+        <div class="snip" data-steps="4 5 6" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md · Phase 6 排錯順序</div>
+          <pre><code><span>| 症狀 | 該看哪一層 |</span>
+<span>| --- | --- |</span>
+<span>| 瀏覽器連不上、逾時 | `ping notes-staging.local` 通不通 → `/etc/hosts` 的 IP 對不對 |</span>
+<span>| 404 page not found（Traefik 的白底頁） | `kubectl -n notes-staging get ingress` → `host` 欄位跟你打的網址一不一樣 |</span>
+<span class="hl"> | 502 / 503 | `kubectl -n notes-staging get endpoints notes-web` → Service 的 selector 有沒有對到 pod |</span>
+<span>| 頁面出來但內容不對 | `kubectl -n notes-staging describe pod &lt;pod&gt;` 看 image tag 是不是你預期的那個 sha |</span></code></pre>
+          <p class="snip-why">由外往內，每一層各自確認。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">kubectl -n notes-staging get pods,endpoints</span>
+<span class="cm"># 示意輸出（依 manifest 推得；notes-api 的 Pod 不 Ready 的情境）</span>
+NAME                             READY   STATUS             RESTARTS   AGE
+pod/notes-api-5f6d7c8b9a-k3j2h   0/1     ImagePullBackOff   0          12m
+pod/notes-web-6c9d7f5b8d-q8m2n   1/1     Running            0          2d
+
+NAME                  ENDPOINTS       AGE
+endpoints/notes-api   &lt;none&gt;          12m
+endpoints/notes-web   10.42.0.30:80   5d</pre><p>docs 9-e 的指令。一次看 Pod 與 endpoints：endpoints 空、Pod READY 0/1，就走「不 Ready」那條分支。</p></div><div class="term"><pre><span class="cmd">kubectl -n notes-staging describe pod -l component=api</span>
+<span class="cm"># 示意輸出（依 manifest 推得；probe 失敗的情境）</span>
+Events:
+  Warning  Unhealthy  kubelet  Readiness probe failed: Get "http://10.42.0.31:3000/api/health": dial tcp 10.42.0.31:3000: connect: connection refused</pre><p>connection refused 表示行程還沒 listen 或 port 對不上；404 表示路徑寫錯。</p></div><div class="term"><pre><span class="cmd">kubectl -n kube-system logs deploy/traefik --tail=50</span>
+<span class="cm"># 示意輸出（依 Traefik 行為推得）</span>
+…level=error msg="…service notes-staging/notes-api…"</pre><p>Ingress 引用的 Service 名稱寫錯時，Traefik 會在這裡記錯誤；那種情況使用者端看到的通常是 404 而不是 503。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p>docs/gitops-roadmap.md Phase 9 開頭寫明：從單服務變雙服務有五個地方要同時改，漏一個就會出現「<code>/</code> 正常但 <code>/api</code> 回 <code>no available server</code>」。</p>
+<p>Phase 9 上線那天（notes-deploy <code>4b60f81</code> 到 <code>377d045</code> 之間約 20 分鐘），notes-api 的 Pod 卡在 ImagePullBackOff，從未 Ready，endpoints 必然是空的。依機制推算，那段時間打 <code>/api</code> 走的就是這張圖；當時 Traefik 的實際回應沒有留下紀錄。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>kubectl get service 永遠有 ClusterIP，看不出後面有沒有 Pod；一定要看 endpoints。</li><li>直接 kubectl edit Service 修 selector，Argo CD 的 selfHeal 會把它改回 Git 的錯誤版本；要改 notes-deploy。</li><li>selector 太寬時不會出現 no available server，而是間歇性失敗；endpoints 的 IP 數量比 Pod 數多就是這個情況。</li></ul></div>
+</article>
+    <nav class="pager" aria-label="上一頁與下一頁">
+      <a href="gitops.html"><small>上一層</small><span>GitOps 鏈路</span></a>
+      <a class="next" href="cmd.html"><small>下一層</small><span>k8s 指令</span></a>
+    </nav>
+  </main>
+</div>
+<script type="application/json" id="arch-data">{"size":{"w":1360,"h":660},"clusters":[{"id":"LOCAL","x":10,"y":118,"w":150,"h":90,"label":"本機 Mac"},{"id":"GHC","x":180,"y":118,"w":150,"h":90,"label":"github.com"},{"id":"ACTIONS","x":366,"y":20,"w":808,"h":290,"label":"GitHub Actions · notes","right":true},{"id":"DEPLOYC","x":366,"y":356,"w":318,"h":84,"label":"notes-deploy repo"},{"id":"K3S","x":186,"y":440,"w":870,"h":210,"label":"k3s · Multipass VM","right":true,"bottom":true},{"id":"NS_S","x":385,"y":452,"w":290,"h":82,"label":"ns notes-staging"},{"id":"NS_P","x":725,"y":452,"w":290,"h":82,"label":"ns notes-production"}],"nodes":[{"id":"DEV","x":20,"y":140,"l":["開發者","git · husky"]},{"id":"GH","x":190,"y":140,"l":["notes repo","branch protection"]},{"id":"CL","x":380,"y":50,"l":["commitlint.yml","訊息規範"]},{"id":"LLM","x":540,"y":50,"l":["llm-pr-assist.yml","PR 留言"]},{"id":"GEM","x":1210,"y":50,"l":["Gemini API","generateContent"]},{"id":"BUILD","x":380,"y":140,"l":["build","test · build"]},{"id":"WB","x":540,"y":140,"l":["white-box","Semgrep · Trivy fs"]},{"id":"DOCKER","x":700,"y":140,"l":["docker ×2","buildx · Trivy image"]},{"id":"GHCR","x":1210,"y":140,"l":["GHCR","notes · notes-api"]},{"id":"BS","x":540,"y":240,"l":["bump-staging","自動"]},{"id":"ENV","x":700,"y":232,"w":130,"h":62,"shape":"diamond","l":["production","人工 Approve"]},{"id":"BP","x":870,"y":240,"l":["bump-production","Approve 之後"]},{"id":"REL","x":1030,"y":240,"l":["release","semantic-release"]},{"id":"MC","x":380,"y":380,"l":["manifest-check","kustomize build"]},{"id":"DEPLOY","x":540,"y":380,"l":["notes-deploy","base · overlays"]},{"id":"ARGO","x":200,"y":478,"l":["Argo CD","Application ×2"]},{"id":"WEB_S","x":395,"y":478,"l":["notes-web","nginx + Vue"]},{"id":"API_S","x":535,"y":478,"l":["notes-api","Express :3000"]},{"id":"WEB_P","x":735,"y":478,"l":["notes-web","nginx + Vue"]},{"id":"API_P","x":875,"y":478,"l":["notes-api","Express :3000"]},{"id":"TRA","x":700,"y":590,"l":["Traefik","Ingress 分流"]},{"id":"BROWSER","x":1210,"y":590,"l":["瀏覽器","notes.local"]}],"edges":[{"id":"e_dev_gh","pts":[[150,163],[190,163]],"label":"push","lx":170,"ly":155},{"id":"e_gh_cl","pts":[[255,140],[255,73],[380,73]],"label":"PR / push","lx":318,"ly":67},{"id":"e_gh_llm","pts":[[285,140],[285,34],[605,34],[605,50]],"label":"PR","lx":440,"ly":30},{"id":"e_llm_gem","pts":[[670,73],[1210,73]],"label":"prompt → 建議文字","lx":940,"ly":67},{"id":"e_gh_build","pts":[[320,163],[380,163]]},{"id":"e_build_wb","pts":[[510,163],[540,163]]},{"id":"e_wb_docker","pts":[[670,163],[700,163]]},{"id":"e_docker_ghcr","pts":[[830,163],[1210,163]],"label":"push :sha-\u003ccommit>","lx":1020,"ly":155},{"id":"e_docker_bs","pts":[[740,186],[740,212],[605,212],[605,240]],"label":"staging","lx":672,"ly":207},{"id":"e_docker_env","pts":[[765,186],[765,232]],"label":"main","lx":771,"ly":214,"anchor":"start"},{"id":"e_env_bp","pts":[[830,263],[870,263]]},{"id":"e_bp_rel","pts":[[1000,263],[1030,263]]},{"id":"e_rel_gh","pts":[[1095,286],[1095,322],[230,322],[230,186]],"dashed":true,"label":"tag + GitHub Release","lx":1010,"ly":316},{"id":"e_bs_deploy","pts":[[605,286],[605,380]],"label":"deploy key","lx":611,"ly":342,"anchor":"start"},{"id":"e_bp_deploy","pts":[[935,286],[935,348],[645,348],[645,380]],"label":"deploy key","lx":800,"ly":342},{"id":"e_deploy_mc","pts":[[540,403],[510,403]]},{"id":"e_deploy_argo","pts":[[560,426],[560,446],[265,446],[265,478]],"dashed":true,"label":"polling","lx":330,"ly":441},{"id":"e_argo_s","pts":[[330,501],[385,501]],"label":"sync","lx":357,"ly":494},{"id":"e_argo_p","pts":[[265,524],[265,562],[990,562],[990,534]],"label":"sync","lx":900,"ly":557},{"id":"e_ghcr_pull","pts":[[1275,186],[1275,493],[1056,493]],"dashed":true,"label":"image pull","lx":1165,"ly":487},{"id":"e_br_tra","pts":[[1210,613],[830,613]],"label":"Host: notes.local","lx":1020,"ly":606},{"id":"e_tra_s","pts":[[700,613],[530,613],[530,534]],"label":"notes-staging.local","lx":615,"ly":606},{"id":"e_tra_p","pts":[[790,590],[790,534]],"label":"notes.local","lx":796,"ly":580,"anchor":"start"}],"scenarios":[{"id":"s1","label":"開 PR 到 staging","steps":[{"n":["DEV","GH"],"e":["e_dev_gh"],"t":"開發者 push feature/* 分支，在 GitHub 開 PR，base 選 staging"},{"n":["CL"],"e":["e_gh_cl"],"t":"commitlint.yml：逐一檢查 PR 裡每個 commit 的訊息格式"},{"n":["LLM","GEM"],"e":["e_gh_llm","e_llm_gem"],"t":"llm-pr-assist.yml：三個 job 平行呼叫 Gemini，結果貼成 PR 留言（不是 required）"},{"n":["BUILD"],"e":["e_gh_build"],"t":"ci.yml build：npm ci → npm test → npm run build，上傳 dist"},{"n":["WB"],"e":["e_build_wb"],"t":"white-box：Semgrep + Trivy fs，CRITICAL/HIGH 直接讓 job 失敗"},{"n":["GH"],"e":[],"t":"三個 required checks 綠燈，Merge 按鈕才可用；PR 事件不會 build image、不會部署"}]},{"id":"s2","label":"merge 進 staging → k3s 換版","steps":[{"n":["GH"],"e":[],"t":"merge 之後 GitHub 發出 push staging 事件，ci.yml 在合併後的程式碼上重跑"},{"n":["BUILD","WB"],"e":["e_gh_build","e_build_wb"],"t":"build + white-box 再跑一次：image 必須從合併後的程式碼產生"},{"n":["DOCKER"],"e":["e_wb_docker"],"t":"docker matrix：web 與 api 兩個分身各自 buildx，產出 amd64 + arm64"},{"n":["GHCR"],"e":["e_docker_ghcr"],"t":"push ghcr.io/liaooliver/notes:sha-\u003c40 碼>，接著用 Trivy 掃剛推上去的 image"},{"n":["BS"],"e":["e_docker_bs"],"t":"bump-staging：確認 staging 沒前進，kustomize edit set image 改 overlays/staging"},{"n":["DEPLOY","MC"],"e":["e_bs_deploy","e_deploy_mc"],"t":"用 deploy key push 進 notes-deploy main；那邊的 manifest-check 驗一次 kustomize build"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 輪詢到 notes-deploy 的新 commit，notes-staging 變成 OutOfSync"},{"n":["ARGO","NS_S","WEB_S","API_S"],"e":["e_argo_s"],"t":"automated sync：apply 新的 Deployment，controller 開始 rolling update"},{"n":["GHCR","K3S"],"e":["e_ghcr_pull"],"t":"kubelet 依 image tag 從 GHCR 拉 arm64 那一層；新 Pod 通過 readinessProbe 才接流量"},{"n":["BROWSER","TRA","NS_S"],"e":["e_br_tra","e_tra_s"],"t":"瀏覽器打 notes-staging.local，Traefik 依 Host 與路徑分流到 staging 的 Service"}]},{"id":"s3","label":"staging → main + Approve","steps":[{"n":["GH"],"e":[],"t":"開 PR staging → main，跑一樣的 PR 檢查；用 merge commit 合併，發出 push main"},{"n":["BUILD","WB"],"e":["e_gh_build","e_build_wb"],"t":"build + white-box 在 main 的 commit 上再跑一次"},{"n":["DOCKER","GHCR"],"e":["e_wb_docker","e_docker_ghcr"],"t":"依 main 的 commit SHA 重新 build、push 一組 image"},{"n":["ENV"],"e":["e_docker_env"],"t":"bump-production 綁了 environment: production，run 停在 Waiting"},{"n":["ENV"],"e":[],"t":"Reviewer 在 run 頁面按 Review deployments → Approve and deploy"},{"n":["BP"],"e":["e_env_bp"],"t":"bump-production：再確認 main 沒前進，改 overlays/production 的 image tag"},{"n":["DEPLOY"],"e":["e_bp_deploy"],"t":"用 deploy key push 進 notes-deploy main"},{"n":["REL","GH"],"e":["e_bp_rel","e_rel_gh"],"t":"release：semantic-release 分析 commit、算版號、打 tag、開 GitHub Release"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 輪詢到 overlays/production 變了，notes-production 變成 OutOfSync"},{"n":["ARGO","NS_P","WEB_P","API_P"],"e":["e_argo_p"],"t":"automated sync → rolling update；人工閘只有上游那一道 Approve"},{"n":["BROWSER","TRA","NS_P"],"e":["e_br_tra","e_tra_p"],"t":"瀏覽器打 notes.local，流量進到 production"}]},{"id":"s4","label":"production 回滾","steps":[{"n":["DEV","DEPLOY"],"e":[],"t":"在 notes-deploy git revert 那個 bump commit 並 push（這個 repo 不設保護，不用 PR）"},{"n":["MC"],"e":["e_deploy_mc"],"t":"manifest-check 驗 kustomize build 還算得出來"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 發現 image tag 變回舊值，notes-production 變成 OutOfSync"},{"n":["ARGO","NS_P","WEB_P","API_P"],"e":["e_argo_p"],"t":"sync 後 rolling update 回舊版；舊 image 還在 GHCR，不用重新 build"},{"n":["NS_P"],"e":[],"t":"直接 kubectl rollout undo 沒用：selfHeal 會把 cluster 改回 Git 裡寫的版本"}]}],"names":{"DEV":"開發者本機（git、husky commit-msg hook）","GH":"GitHub：liaooliver/notes（PR、branch protection）","ACTIONS":"GitHub Actions","CL":"commitlint.yml","LLM":"llm-pr-assist.yml","GEM":"Gemini API","BUILD":"ci.yml › build","WB":"ci.yml › white-box","DOCKER":"ci.yml › docker（matrix web / api）","GHCR":"GHCR：ghcr.io/liaooliver/notes、notes-api","BS":"ci.yml › bump-staging","ENV":"GitHub Environment：production","BP":"ci.yml › bump-production","REL":"ci.yml › release","MC":"notes-deploy › manifest-check.yml","DEPLOY":"liaooliver/notes-deploy","DEPLOYC":"liaooliver/notes-deploy","K3S":"k3s cluster（Multipass VM）","ARGO":"Argo CD","NS_S":"namespace notes-staging","NS_P":"namespace notes-production","WEB_S":"notes-staging › notes-web","API_S":"notes-staging › notes-api","WEB_P":"notes-production › notes-web","API_P":"notes-production › notes-api","TRA":"Traefik（k3s 內建 Ingress controller）","BROWSER":"Mac 上的瀏覽器","LOCAL":"開發者本機","GHC":"github.com"}}</script>
+<script src="seqviz.js"></script>
+<script src="archviz.js"></script>
+<script>
+(function () {
+  var A = JSON.parse(document.getElementById('arch-data').textContent);
+  SeqViz.mountAll('.seq');
+  document.querySelectorAll('.flowx').forEach(ArchViz.mountFlow);
+  document.querySelectorAll('.mini-slot').forEach(function (m) {
+    var ids = m.dataset.ids.split(' ');
+    ArchViz.mountMini(m, A, ids, 'index.html#node-' + ids[0]);
+  });
+  document.querySelectorAll('.viz-row').forEach(function (row) {
+    var viz = row.querySelector('.seq, .flowx'), panel = row.querySelector('.code-panel');
+    if (!viz || !panel) return;
+    var snips = Array.prototype.slice.call(panel.querySelectorAll('.snip'));
+    snips.forEach(function (s) { s.steps = s.dataset.steps.split(' ').map(Number); });
+    viz.addEventListener('seqstep', function (e) {
+      var k = e.detail.step, first = null;
+      snips.forEach(function (s) {
+        var hit = k >= 0 && s.steps.indexOf(k) !== -1;
+        s.classList.toggle('cur', hit);
+        s.classList.toggle('dim', k >= 0 && !hit);
+        if (hit && !first) first = s;
+      });
+      if (first) {
+        var top = first.offsetTop - panel.offsetTop - 8;
+        if (top < panel.scrollTop || top + first.offsetHeight > panel.scrollTop + panel.clientHeight) panel.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+    });
+    snips.forEach(function (s) {
+      var jump = function () { if (viz.seqviz) { viz.seqviz.stop(); viz.seqviz.set(s.steps[0]); } };
+      s.addEventListener('click', jump);
+      s.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); } });
+    });
+  });
+  var links = document.querySelectorAll('#nav-list a');
+  if ('IntersectionObserver' in window && links.length) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + en.target.id); });
+      });
+    }, { rootMargin: '-30% 0px -60% 0px' });
+    document.querySelectorAll('.kp').forEach(function (el) { io.observe(el); });
+  }
+})();
+</script>

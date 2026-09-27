@@ -1,0 +1,1284 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Notes 架構地圖 · GitOps 鏈路</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  /* 單一主題：低亮度墨綠底、灰綠字，刻意不做亮色版 */
+  :root {
+    --ground: #33423a;
+    --surface: #3a4a41;
+    --surface-2: #2c3a32;
+    --ink: #e3e7df;
+    --ink-2: #c4ccc1;
+    --ink-3: #97a49a;
+    --line: #52625a;
+    --line-strong: #7b8c82;
+    --accent: #a9c9b4;
+    --pass: #a5cfae;
+    --wait: #d8bb78;
+    --fail: #dc9d8d;
+    --code-bg: #2a3730;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  code, .mono {
+    font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: .88em;
+  }
+  code {
+    background: var(--code-bg);
+    padding: .05em .3em;
+    color: var(--ink);
+  }
+  a { color: var(--ink); text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--ink); }
+  h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.25; font-weight: 600; }
+
+  .topbar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 20;
+    background: var(--ground);
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .topbar-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 10px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 18px;
+  }
+  .brand { font-weight: 600; font-size: 14px; }
+  .brand small { color: var(--ink-3); font-weight: 400; margin-left: 8px; font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 0 4px; margin-left: auto; }
+  .chip {
+    border: 0;
+    background: none;
+    color: var(--ink-3);
+    padding: 2px 8px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 1.6;
+    border-bottom: 2px solid transparent;
+  }
+  .chip:hover { color: var(--ink); }
+  .chip[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .chip:focus-visible, .nav a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 30px 20px 80px;
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 40px;
+  }
+  .nav {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 62px);
+    align-self: start;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+    font-size: 13px;
+    border-right: 1px solid var(--line);
+    padding-right: 14px;
+  }
+  .nav h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-3);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .nav ol { list-style: none; margin: 0 0 18px; padding: 0; }
+  .nav a {
+    display: grid;
+    grid-template-columns: 46px 1fr;
+    gap: 6px;
+    padding: 3px 0 3px 8px;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+  }
+  .nav a .id { color: var(--ink-3); font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .nav a:hover { color: var(--ink); }
+  .nav a.active { border-left-color: var(--ink); color: var(--ink); }
+  .nav li[hidden] { display: none; }
+
+  .main { min-width: 0; }
+  .intro h1 { font-size: 28px; }
+  .intro .lede { color: var(--ink-2); max-width: 62ch; margin: 12px 0 0; }
+  .flow {
+    margin: 24px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .flow .node { border: 1px solid var(--line-strong); padding: 2px 10px; }
+  .flow .node.gate { border-color: var(--ink); border-width: 1.5px; }
+  .flow .arrow { color: var(--ink-3); }
+
+  .legend {
+    margin: 24px 0 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 4px 24px;
+    font-size: 13px;
+  }
+  .legend div { display: flex; gap: 10px; }
+  .legend b { font-weight: 600; min-width: 112px; }
+  .legend span { color: var(--ink-2); }
+
+  .overview { margin-top: 40px; }
+  .overview h2, .cases-heading, .issues h2, .files h2 { font-size: 18px; margin-bottom: 10px; }
+  .table-wrap { overflow-x: auto; border-top: 1px solid var(--line-strong); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 700px; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 500; color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; }
+  tbody tr[hidden] { display: none; }
+  td .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); font-size: 12.5px; }
+  td a { text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+
+  /* 結果標記：一個小方塊 + 文字，不做底色藥丸 */
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+  .pill::before { content: ""; width: 8px; height: 8px; display: inline-block; background: currentColor; }
+  .pill.pass { color: var(--pass); }
+  .pill.wait { color: var(--wait); }
+  .pill.fail { color: var(--fail); }
+  .pill.none { color: var(--ink-3); }
+
+  .cases { margin-top: 40px; }
+  .case {
+    border-top: 1px solid var(--line-strong);
+    padding: 22px 0 34px;
+    scroll-margin-top: 80px;
+  }
+  .case[hidden] { display: none; }
+  .case-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 6px; font-size: 12.5px; }
+  .case-head .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); }
+  .case-head .stage { text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); font-size: 11.5px; }
+  .case-head .pill { margin-left: auto; }
+  .case h2 { font-size: 20px; }
+  .story { margin: 16px 0 0; display: grid; gap: 12px; }
+  .story > div { display: grid; grid-template-columns: 80px 1fr; gap: 12px; }
+  .story dt {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    padding-top: 5px;
+  }
+  .story dd { margin: 0; max-width: 72ch; }
+  .story ol, .story ul { margin: 2px 0 0; padding-left: 20px; }
+  .story li { margin: 2px 0; }
+  .story li ul { padding-left: 18px; }
+  .story dd.result { font-weight: 500; }
+
+  .evidence {
+    margin: 18px 0 0;
+    padding: 10px 0 10px 14px;
+    border-left: 2px solid var(--line-strong);
+    font-size: 14px;
+    max-width: 78ch;
+    color: var(--ink-2);
+  }
+  .evidence b { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 2px; font-weight: 500; }
+
+  .diagram {
+    margin: 22px 0 0;
+    border-top: 1px solid var(--line);
+    overflow-x: auto;
+    padding: 10px 0 0;
+  }
+  .diagram-label {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    padding-bottom: 4px;
+  }
+
+  .issues { margin-top: 40px; border-top: 1px solid var(--line-strong); padding-top: 20px; }
+  .issues ul { margin: 0; padding-left: 20px; max-width: 78ch; color: var(--ink-2); }
+  .issues li { margin: 6px 0; }
+  .files { margin-top: 36px; }
+  .files table { min-width: 520px; }
+  .empty { display: none; color: var(--ink-3); padding: 30px 0; }
+  .empty.show { display: block; }
+
+  @media (max-width: 860px) {
+    .page { grid-template-columns: 1fr; gap: 20px; }
+    .nav { position: static; max-height: none; border-right: 0; padding-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+    .nav ol { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+    .nav a { grid-template-columns: auto; padding: 2px 0; border-left: 0; }
+    .nav a.active { text-decoration: underline; }
+    .nav a .label { display: none; }
+    .story > div { grid-template-columns: 1fr; gap: 2px; }
+    .case-head .pill { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+
+  /* 互動圖表：控制列與 SVG 樣式（seqviz.js / 流程圖共用） */
+  .viz-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0 4px; font-size: 13px; }
+  .viz-ctl button, .viz-scn button {
+    border: 1px solid var(--line-strong); background: none; color: var(--ink);
+    font: inherit; font-size: 12.5px; padding: 2px 10px; cursor: pointer; line-height: 1.6;
+  }
+  .viz-ctl button:hover, .viz-scn button:hover { border-color: var(--ink); }
+  .viz-ctl button:disabled { opacity: .35; cursor: default; }
+  .viz-ctl button:focus-visible, .viz-scn button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .viz-count { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 56px; font-size: 12.5px; }
+  .viz-range { flex: 1 1 160px; min-width: 120px; accent-color: var(--accent); }
+  .viz-caption { font-size: 13.5px; color: var(--ink); min-height: 1.6em; margin: 2px 0 10px; font-weight: 500; max-width: 80ch; }
+  .viz-svg { overflow-x: auto; padding-bottom: 6px; }
+  .viz-scn { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+  .viz-scn button[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .seq:focus-visible, .flow-viz:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+
+  .seq-svg text, .flow-svg text { font-family: "IBM Plex Sans", "Noto Sans TC", "PingFang TC", sans-serif; font-size: 13px; fill: var(--ink-2); }
+  .seq-svg .head rect { fill: var(--surface-2); stroke: var(--line-strong); }
+  .seq-svg .head rect.actor { stroke-dasharray: 3 2; }
+  .seq-svg .head text { fill: var(--ink); font-weight: 500; }
+  .seq-svg .head.cur rect { fill: var(--accent); stroke: var(--accent); }
+  .seq-svg .head.cur text { fill: var(--ground); font-weight: 600; }
+  .seq-svg .life { stroke: var(--line); stroke-dasharray: 4 4; }
+  .seq-svg .life.cur { stroke: var(--accent); stroke-dasharray: none; }
+  .seq-svg .msg-line { stroke: var(--ink-2); stroke-width: 1.2; fill: none; }
+  .seq-svg .msg-line.dashed { stroke-dasharray: 5 4; }
+  .seq-svg .ah { fill: var(--ink-2); }
+  .seq-svg .ah-open, .seq-svg .ah-x { stroke: var(--ink-2); fill: none; stroke-width: 1.2; }
+  .seq-svg .row.cur .msg-line, .seq-svg .row.cur .ah-open, .seq-svg .row.cur .ah-x { stroke: var(--accent); stroke-width: 2; }
+  .seq-svg .row.cur .ah { fill: var(--accent); }
+  .seq-svg .row.cur text { fill: var(--ink); font-weight: 600; }
+  .seq-svg .row.future { opacity: .14; }
+  .seq-svg .row.done { opacity: .55; }
+  .seq-svg .note-rect { fill: var(--surface); stroke: var(--line-strong); }
+  .seq-svg .row.cur .note-rect { stroke: var(--accent); stroke-width: 1.5; }
+  .seq-svg .note-text { fill: var(--ink-2); }
+  .seq-svg .frame-rect { fill: none; stroke: var(--line-strong); stroke-dasharray: 2 3; }
+  .seq-svg .frame.cur .frame-rect { stroke: var(--accent); stroke-dasharray: none; }
+  .seq-svg .frame-kind { font-size: 11.5px; fill: var(--ink); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .seq-svg .frame-label { font-size: 12px; fill: var(--ink-3); }
+  .seq-svg .sep-line { stroke: var(--line-strong); stroke-dasharray: 4 3; }
+  .seq-svg .row.msg, .seq-svg .row.self, .seq-svg .row.note { cursor: pointer; }
+
+  .flow-svg { display: block; min-width: 900px; width: 100%; height: auto; }
+  .flow-svg .node rect, .flow-svg .node polygon { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1; }
+  .flow-svg .node text { fill: var(--ink); font-size: 12.5px; }
+  .flow-svg .node .sub { fill: var(--ink-3); font-size: 11.5px; }
+  .flow-svg .node.cur rect, .flow-svg .node.cur polygon { fill: var(--accent); stroke: var(--accent); }
+  .flow-svg .node.cur text { fill: var(--ground); font-weight: 600; }
+  .flow-svg .node.done rect, .flow-svg .node.done polygon { stroke: var(--accent); }
+  .flow-svg .node.off { opacity: .28; }
+  .flow-svg .edge path { fill: none; stroke: var(--ink-2); stroke-width: 1.2; }
+  .flow-svg .edge.dashed path { stroke-dasharray: 5 4; }
+  .flow-svg .edge .ah { fill: var(--ink-2); }
+  .flow-svg .edge text { font-size: 11.5px; fill: var(--ink-3); }
+  .flow-svg .edge.cur path { stroke: var(--accent); stroke-width: 2.2; }
+  .flow-svg .edge.cur .ah { fill: var(--accent); }
+  .flow-svg .edge.cur text { fill: var(--ink); font-weight: 600; }
+  .flow-svg .edge.done path { stroke: var(--accent); opacity: .7; }
+  .flow-svg .edge.done .ah { fill: var(--accent); }
+  .flow-svg .edge.off { opacity: .22; }
+  .flow-svg .cluster rect { fill: none; stroke: var(--line); stroke-dasharray: 3 3; }
+  .flow-svg .cluster text { fill: var(--ink-3); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; }
+  @media (prefers-reduced-motion: no-preference) {
+    .seq-svg .row, .seq-svg .head rect, .flow-svg .node, .flow-svg .edge, .flow-svg .node rect, .flow-svg .node polygon { transition: opacity .25s, fill .25s, stroke .25s; }
+  }
+
+  /* 時序圖 + 右側對照程式碼 */
+  .page { max-width: 1360px; grid-template-columns: 190px minmax(0, 1fr); }
+  .viz-row { display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 22px; align-items: start; }
+  .code-panel {
+    position: sticky; top: calc(env(safe-area-inset-top, 0px) + 60px);
+    max-height: calc(100vh - 80px); overflow-y: auto;
+    border-left: 1px solid var(--line); padding-left: 14px; font-size: 12.5px;
+  }
+  .snip-head { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 8px; }
+  .snip { border-left: 2px solid transparent; padding: 6px 0 6px 10px; margin: 0 0 10px -12px; cursor: pointer; transition: opacity .2s, border-color .2s; }
+  .snip:hover { border-left-color: var(--line-strong); }
+  .snip:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .snip.cur { border-left-color: var(--accent); }
+  .snip.dim { opacity: .38; }
+  .snip-file { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--ink-3); margin-bottom: 4px; }
+  .snip.cur .snip-file { color: var(--accent); }
+  .snip pre { margin: 0; padding: 8px 10px; background: var(--code-bg); overflow-x: auto; font-family: "IBM Plex Mono", monospace; font-size: 11.5px; line-height: 1.55; color: var(--ink-2); }
+  .snip pre code { background: none; padding: 0; font-size: inherit; }
+  .snip pre .hl { display: inline-block; width: 100%; color: var(--ink); }
+  .snip.cur pre .hl { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: -10px 0 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+  .snip-why { margin: 6px 0 0; color: var(--ink-2); line-height: 1.55; }
+  .snip.cur .snip-why { color: var(--ink); }
+  @media (max-width: 1100px) {
+    .viz-row { grid-template-columns: 1fr; }
+    .code-panel { position: static; max-height: none; border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 10px; }
+  }
+
+
+
+  /* ---------- 架構學習地圖：在 scenario-atlas 主題上加的部分 ---------- */
+  .tabs { display: flex; flex-wrap: wrap; gap: 0 2px; margin-left: auto; }
+  .tabs a {
+    color: var(--ink-3); text-decoration: none; font-size: 13px; padding: 2px 9px;
+    border-bottom: 2px solid transparent; line-height: 1.6;
+  }
+  .tabs a:hover { color: var(--ink); }
+  .tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .tabs a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .eyebrow { font-size: 11.5px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); margin-bottom: 8px; }
+  .intro-grid { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 28px; align-items: start; }
+
+  /* 總架構圖 */
+  .arch-wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 22px; }
+  .arch-svg { min-width: 1080px; }
+  .flow-svg .lbg { fill: var(--ground); }
+  .flow-svg .edge .lbg { fill: var(--ground); stroke: none; }
+  .arch-svg .cluster[data-id="NS_S"] rect, .arch-svg .cluster[data-id="NS_P"] rect { stroke: var(--line-strong); }
+  .arch-svg .has-kp { cursor: pointer; }
+  .arch-svg .node.has-kp:hover rect, .arch-svg .node.has-kp:hover polygon { stroke: var(--ink); }
+  .arch-svg .cluster.has-kp:hover rect { stroke: var(--ink-2); }
+  .arch-svg .has-kp:focus-visible { outline: 2px solid var(--ink); }
+  .arch-svg .node.sel rect, .arch-svg .node.sel polygon { stroke: var(--wait); stroke-width: 2.5; }
+  .arch-svg .cluster.sel rect { stroke: var(--wait); stroke-width: 2; stroke-dasharray: none; }
+  .flow-svg .cluster.cur rect { stroke: var(--accent); stroke-dasharray: none; stroke-width: 1.6; }
+  .flow-svg .cluster.done rect { stroke: var(--accent); }
+
+  .node-panel { border-top: 1px solid var(--line-strong); padding-top: 12px; font-size: 13.5px; min-height: 180px; }
+  .node-panel .hint { color: var(--ink-3); font-size: 12.5px; margin: 0 0 10px; }
+  .np-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+  .np-id { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--wait); letter-spacing: .06em; }
+  .np-head b { font-weight: 600; font-size: 15px; line-height: 1.4; }
+  .np-empty { color: var(--ink-3); }
+  .np-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 14px 28px; }
+  .np-list a { display: grid; grid-template-columns: 58px 1fr; gap: 0 8px; text-decoration: none; }
+  .np-list a:hover .np-t { text-decoration: underline; }
+  .np-kp { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+  .np-t { font-weight: 500; }
+  .np-pg { grid-column: 2; font-size: 11.5px; color: var(--ink-3); }
+  .np-list p { margin: 3px 0 0 66px; color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
+
+  /* mini-map */
+  .mini { margin: 0; }
+  .mini-link { display: block; border: 1px solid var(--line); padding: 6px; background: var(--surface-2); }
+  .mini-link:hover { border-color: var(--line-strong); }
+  .mini-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .arch-mini { display: block; width: 100%; height: auto; min-width: 0; }
+  .arch-mini text { display: none; }
+  .arch-mini .edge path { stroke: var(--line-strong); stroke-width: 3; }
+  .arch-mini .edge .ah { fill: var(--line-strong); }
+  .arch-mini .edge .lbg { display: none; }
+  .arch-mini .node rect, .arch-mini .node polygon { fill: var(--surface); stroke: var(--line-strong); stroke-width: 2; }
+  .arch-mini .cluster rect { stroke: var(--line-strong); stroke-width: 2; }
+  .arch-mini .cluster text { display: block; font-size: 26px; fill: var(--ink-3); }
+  .arch-mini .cluster[data-id="NS_S"] text, .arch-mini .cluster[data-id="NS_P"] text,
+  .arch-mini .cluster[data-id="LOCAL"] text, .arch-mini .cluster[data-id="GHC"] text { display: none; }
+  .arch-mini .node.hit rect, .arch-mini .node.hit polygon { fill: var(--accent); stroke: var(--accent); }
+  .arch-mini .cluster.hit rect { stroke: var(--accent); stroke-width: 5; stroke-dasharray: none; fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .mini figcaption { font-size: 12px; color: var(--ink-3); margin-top: 6px; font-family: "IBM Plex Mono", monospace; line-height: 1.5; }
+
+  /* 知識點 */
+  .kp { border-top: 1px solid var(--line-strong); padding: 26px 0 40px; scroll-margin-top: 70px; }
+  .kp-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 12.5px; margin-bottom: 6px; }
+  .kp-head .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); }
+  .kp-head .where { font-family: "IBM Plex Mono", monospace; color: var(--accent); font-size: 12px; }
+  .kp h2 { font-size: 21px; }
+  .kp .tldr { margin: 10px 0 0; font-size: 15.5px; color: var(--ink); max-width: 70ch; font-weight: 500; }
+  .kp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; margin-top: 16px; align-items: start; }
+  .kp-body { max-width: 70ch; color: var(--ink-2); }
+  .kp-body p { margin: 0 0 12px; }
+  .kp-body ul, .kp-body ol { margin: 0 0 12px; padding-left: 20px; }
+  .kp-body li { margin: 3px 0; }
+  .kp-body b { color: var(--ink); font-weight: 600; }
+  .terms { margin: 18px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 8px 28px; font-size: 13.5px; }
+  .terms div { display: grid; grid-template-columns: minmax(96px, auto) 1fr; gap: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .terms dt { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink); }
+  .terms dd { margin: 0; color: var(--ink-2); line-height: 1.55; }
+  .flowx { min-width: 0; }
+  .grid-flow { display: block; height: auto; width: 100%; }
+
+  /* 終端機 */
+  .cmds { margin-top: 22px; display: grid; gap: 14px; }
+  .cmds-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+  .term { border-left: 2px solid var(--line-strong); padding-left: 12px; }
+  .term pre { margin: 0; background: var(--code-bg); padding: 10px 12px; overflow-x: auto; font-family: "IBM Plex Mono", monospace; font-size: 12px; line-height: 1.55; color: var(--ink-3); }
+  .term .cmd { color: var(--ink); }
+  .term .cmd::before { content: "$ "; color: var(--accent); }
+  .term .cm { color: var(--wait); }
+  .term p { margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2); max-width: 78ch; }
+
+  .pitfalls { margin-top: 18px; font-size: 14px; max-width: 78ch; }
+  .pitfalls b { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--fail); margin-bottom: 4px; font-weight: 500; }
+  .pitfalls ul { margin: 0; padding-left: 20px; color: var(--ink-2); }
+  .pitfalls li { margin: 4px 0; }
+
+  .pager { display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line-strong); padding-top: 18px; margin-top: 10px; font-size: 14px; }
+  .pager a { text-decoration: none; display: grid; gap: 2px; }
+  .pager a:hover span:last-child { text-decoration: underline; }
+  .pager small { color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; }
+  .pager .next { text-align: right; margin-left: auto; }
+
+  /* 總覽頁：閱讀路線 */
+  .route { margin-top: 44px; }
+  .route h2 { font-size: 18px; margin-bottom: 6px; }
+  .route > p { color: var(--ink-2); margin: 0 0 14px; max-width: 70ch; }
+  .layer { border-top: 1px solid var(--line-strong); padding: 16px 0 18px; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; }
+  .layer h3 { font-size: 17px; }
+  .layer h3 a { text-decoration: none; }
+  .layer h3 a:hover { text-decoration: underline; }
+  .layer .eyebrow { margin-bottom: 4px; }
+  .layer .desc { color: var(--ink-2); font-size: 13.5px; margin: 6px 0 0; }
+  .layer ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .layer li a { display: grid; grid-template-columns: 62px 1fr; gap: 8px; text-decoration: none; font-size: 14px; }
+  .layer li a:hover .t { text-decoration: underline; }
+  .layer li .id { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+  .layer li .s { grid-column: 2; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+  .howto { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 6px 26px; font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 12px; }
+  .howto b { color: var(--ink); font-weight: 500; }
+  .note-src { margin-top: 36px; font-size: 12.5px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 12px; max-width: 90ch; }
+
+  @media (max-width: 1100px) {
+    .arch-wrap, .intro-grid, .kp-grid { grid-template-columns: 1fr; }
+    .kp-grid .mini, .intro-grid .mini { max-width: 420px; }
+  }
+  @media (max-width: 860px) {
+    .page { grid-template-columns: 1fr; }
+    .layer { grid-template-columns: 1fr; gap: 10px; }
+    .tabs { margin-left: 0; }
+  }
+
+</style>
+
+<header class="topbar"><div class="topbar-inner">
+    <div class="brand">Notes 架構地圖 <small>liaooliver/notes · notes-deploy</small></div>
+    <nav class="tabs" aria-label="分頁"><a href="index.html">總覽</a><a href="git.html">Git 流程</a><a href="ci.html">CI 與發版</a><a href="gitops.html" aria-current="page">GitOps</a><a href="k8s.html">k8s runtime</a><a href="cmd.html">k8s 指令</a></nav>
+  </div></header>
+<div class="page">
+  <nav class="nav" aria-label="知識點目錄">
+    <h3>GitOps 鏈路</h3>
+    <ol id="nav-list"><li><a href="#ops-01"><span class="id">OPS-01</span><span class="label">GitOps：cluster 該長什麼樣，只看 notes-deploy 的 main</span></a></li><li><a href="#ops-02"><span class="id">OPS-02</span><span class="label">為什麼 manifest 放在另一個 repo</span></a></li><li><a href="#ops-03"><span class="id">OPS-03</span><span class="label">deploy key：CI 怎麼拿到寫 notes-deploy 的權限</span></a></li><li><a href="#ops-04"><span class="id">OPS-04</span><span class="label">kustomize：一份 base、兩個 overlay 目錄</span></a></li><li><a href="#ops-05"><span class="id">OPS-05</span><span class="label">image tag 用 sha-40 碼 commit，staging 與 production 不是同一顆 image</span></a></li><li><a href="#ops-06"><span class="id">OPS-06</span><span class="label">Argo CD Application：一次 reconcile 做了什麼</span></a></li><li><a href="#ops-07"><span class="id">OPS-07</span><span class="label">Argo CD UI 的 resource tree：每個節點是誰建的</span></a></li><li><a href="#ops-08"><span class="id">OPS-08</span><span class="label">Rollback = revert bump commit；Synced 不代表是最新 commit</span></a></li></ol>
+    <h3>其他</h3>
+    <ol><li><a href="index.html"><span class="id">MAP</span><span class="label">總架構圖</span></a></li></ol>
+  </nav>
+  <main class="main">
+    <section class="intro"><div class="intro-grid">
+      <div><div class="eyebrow">第 3 層 · GHCR → notes-deploy → Argo CD</div><h1>GitOps 鏈路</h1><p class="lede">這一層從 image 已經躺在 GHCR 開始。CI 把新的 tag 寫進 notes-deploy 這個 repo，Argo CD 在 k3s 裡讀 Git、算出差異、套進 notes-staging / notes-production。上游是 CI 與發版；Deployment、Service、Ingress 本身怎麼運作，交給 k8s runtime 那一頁。</p></div>
+      <figure class="mini"><div class="mini-slot" data-ids="BS BP DEPLOY ARGO GHCR K3S GH MC DOCKER ENV NS_S NS_P WEB_S API_S TRA"></div><figcaption>這一層在總架構圖上的範圍 · 點圖回總覽</figcaption></figure>
+    </div></section>
+    
+<article class="kp" id="ops-01">
+  <div class="kp-head"><span class="id">OPS-01</span><span class="where">liaooliver/notes-deploy › main › overlays/*/kustomization.yaml</span></div>
+  <h2>GitOps：cluster 該長什麼樣，只看 notes-deploy 的 main</h2>
+  <p class="tldr">唯一的真實來源是 notes-deploy 的 main。CI 只改 Git、從不連 cluster；Argo CD 在 cluster 裡把 Git 拉進來套用，這是 pull-based。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>GitOps 的規則只有一條：cluster 的 desired state 寫在 Git，由一個程式持續把 cluster 拉成 Git 的樣子。在這個專案，那份 Git 是 <code>liaooliver/notes-deploy</code> 的 <code>main</code>。真正決定「跑哪個版本」的只有兩個檔：<code>overlays/staging/kustomization.yaml</code> 與 <code>overlays/production/kustomization.yaml</code> 裡的 <code>newTag</code>。</p>
+<p>push-based 是 CI 在 job 最後自己跑 <code>kubectl apply</code>。那需要 GitHub 的 runner 連得到 k3s 的 API server（6443 port），還要把 kubeconfig 存成 GitHub secret。這個 cluster 在 Mac 上的 Multipass VM 裡，IP 是 192.168.64.x 這種私有位址，GitHub 的 runner 根本連不進來。</p>
+<p>pull-based 反過來：Argo CD 跑在 cluster 裡面，自己往外 <code>git fetch</code> GitHub。VM 只要能出網就夠，沒有人需要連進來。CI 的工作到「push 一個 bump commit 進 notes-deploy」就結束，<code>bump-staging</code> / <code>bump-production</code> 裡沒有一行 kubectl。</p>
+<p>所以「image 推上 GHCR」跟「cluster 換版」是兩件事。Argo CD 不讀 GHCR，它只看到 manifest 裡的 tag 字串變了，才把新 spec 交給 k3s，由 k3s 去 pull。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="BS BP DEPLOY ARGO GHCR K3S"></div><figcaption>位置：ci.yml › bump-staging、ci.yml › bump-production、liaooliver/notes-deploy、Argo CD、GHCR：ghcr.io/liaooliver/notes、notes-api、k3s cluster（Multipass VM）</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>desired state</dt><dd>Git 裡宣告的目標狀態。這裡是 kustomize build overlays/* 算出來的 YAML。</dd></div><div><dt>live state</dt><dd>cluster 裡實際存在的物件。Argo CD 拿它跟 desired state 比對。</dd></div><div><dt>push-based</dt><dd>CI 持有 cluster 憑證，直接 kubectl apply。本專案的 runner 連不到 VM，做不到。</dd></div><div><dt>pull-based</dt><dd>cluster 內的 agent（Argo CD）主動讀 Git 並套用。只需要出網。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">pull-based 鏈路 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"ci","c":0,"r":0,"l":["bump-staging / production","notes 的 CI job"]},{"id":"git","c":1,"r":0,"l":["notes-deploy main","overlays/*/kustomization.yaml"]},{"id":"argo","c":2,"r":0,"l":["Argo CD","VM 內，往外 fetch"]},{"id":"k8s","c":3,"r":0,"l":["k3s API server","notes-staging / production"]},{"id":"ghcr","c":4,"r":0,"l":["GHCR","notes / notes-api:sha-…"]},{"id":"push","c":0,"r":1,"l":["kubectl apply from runner","push-based（未採用）"],"shape":"diamond"}],"edges":[{"id":"e0","from":"ci","to":"push","dashed":true,"label":"連不到 VM 私有 IP"},{"id":"e1","from":"ci","to":"git","label":"git push（deploy key）"},{"id":"e2","from":"git","to":"argo","label":"約 3 分鐘 fetch 一次"},{"id":"e3","from":"argo","to":"k8s","label":"apply 差異"},{"id":"e4","from":"k8s","to":"ghcr","label":"pull 新 tag"}],"steps":[{"n":["ci"],"e":[],"t":"bump job 算出 IMAGE_TAG = sha-（github.sha），整個 job 不碰 cluster"},{"n":["ci","push"],"e":["e0"],"t":"push-based 要 runner 連進 VM 的 6443，還要把 kubeconfig 放進 GitHub"},{"n":["git"],"e":["e1"],"t":"bump commit 進 notes-deploy 的 main，desired state 在這一刻改變"},{"n":["argo"],"e":["e2"],"t":"Argo CD 從 cluster 內往外 fetch，發現 main 有新 commit"},{"n":["k8s"],"e":["e3"],"t":"Argo CD 算出差異，把新的 Deployment spec 送進 API server"},{"n":["ghcr"],"e":["e4"],"t":"k3s 依 spec 裡的 tag 去 GHCR pull；Argo CD 自己從不讀 GHCR"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>  bump-staging:</span>
+<span>    name: Bump Staging Manifest</span>
+<span>    needs: docker</span>
+<span>    runs-on: ubuntu-latest</span>
+<span>    if: github.event_name == 'push' &amp;&amp; github.ref == 'refs/heads/staging'</span>
+<span class="hl">    # 注意這裡沒有 contents: write —— 這個 job 不寫 notes，</span>
+<span class="hl">    # 寫 notes-deploy 的權限來自 DEPLOY_REPO_SSH_KEY，跟 GITHUB_TOKEN 無關。</span></code></pre>
+          <p class="snip-why">bump-staging 的權限宣告：沒有 contents: write，也沒有任何 cluster 憑證。</p>
+        </div>
+        <div class="snip" data-steps="2" tabindex="0">
+          <div class="snip-file">notes-deploy/README.md</div>
+          <pre><code><span># notes-deploy</span>
+<span></span>
+<span class="hl">[`liaooliver/notes`](https://github.com/liaooliver/notes) 的 GitOps manifest，**Argo CD 唯一的真實來源**。</span>
+<span></span>
+<span>這個 repo 裡只有部署設定，一行程式碼都沒有。</span></code></pre>
+          <p class="snip-why">repo 的定位寫在第一行：它就是 Argo CD 讀的那份 Git。</p>
+        </div>
+        <div class="snip" data-steps="3 4" tabindex="0">
+          <div class="snip-file">notes-deploy/argocd/notes-staging.yaml</div>
+          <pre><code><span>  source:</span>
+<span class="hl">    repoURL: https://github.com/liaooliver/notes-deploy.git</span>
+<span class="hl">    targetRevision: main             # notes-deploy 只有一條 main</span>
+<span class="hl">    path: overlays/staging           # 環境靠「目錄」分，不是靠分支</span>
+<span>  destination:</span>
+<span>    server: https://kubernetes.default.svc</span>
+<span>    namespace: notes-staging</span></code></pre>
+          <p class="snip-why">Argo CD 讀哪個 repo、哪個分支、哪個目錄，套到哪個 namespace。</p>
+        </div>
+        <div class="snip" data-steps="2 5" tabindex="0">
+          <div class="snip-file">notes-deploy/overlays/staging/kustomization.yaml</div>
+          <pre><code><span>images:</span>
+<span>- name: ghcr.io/liaooliver/notes</span>
+<span>  newName: ghcr.io/liaooliver/notes</span>
+<span class="hl">  newTag: sha-64430d0759dbc47064cac1ce9f21beebb84bc192</span>
+<span>- name: ghcr.io/liaooliver/notes-api</span>
+<span>  newName: ghcr.io/liaooliver/notes-api</span>
+<span class="hl">  newTag: sha-64430d0759dbc47064cac1ce9f21beebb84bc192</span></code></pre>
+          <p class="snip-why">整條鏈路真正改變的只有這兩行字串。</p>
+        </div>
+      </aside></div></div>
+  
+  <div class="evidence"><b>實際發生過</b><p><code>notes-deploy</code> 到 2026-09-27 共 15 個 commit：10 筆是 <code>github-actions[bot]</code> 的 <code>chore(deploy): bump … image to sha-…</code>，1 筆是 2026-09-19 驗證 deploy key 的 <code>fcf76a8 chore: verify deploy key write access from notes CI</code>，其餘 4 筆是手動改結構（bootstrap、pin、加 notes-api、改註解）。整段歷史就是部署紀錄。</p>
+<p>最近一次 production 部署：<code>liaooliver/notes</code> run #85（36241885140）的 <code>Ops Handoff / Bump Production Manifest</code> job 從開始到結束 9 秒，只做 checkout、<code>kustomize edit</code>、commit、push，產生 <code>02a6026</code>。之後的換版全部由 Argo CD 在 cluster 內完成。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>GHCR 上出現新 tag 不代表 cluster 換版；中間隔著 bump commit 與 Argo CD 的 polling。</li><li>直接 kubectl set image 改 cluster 不會持久：Git 沒變，selfHeal 在下一輪就改回 Git 的值。</li></ul></div>
+</article>
+
+<article class="kp" id="ops-02">
+  <div class="kp-head"><span class="id">OPS-02</span><span class="where">GitHub › liaooliver/notes › Settings › Branches</span></div>
+  <h2>為什麼 manifest 放在另一個 repo</h2>
+  <p class="tldr">notes 的 main / staging 是 classic branch protection，required check 沒有身分豁免。bot 的 bump commit 身上不會有 check，換任何 token 都推不進去，只能改寫一個不受保護的 repo。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>bump commit 一定要寫進某個 Git。最初的設計是寫回 <code>notes</code> 的 <code>deploy/</code> 目錄，但 <code>main</code> 與 <code>staging</code> 都有 classic branch protection，同時開著兩條規則。規則 A：必須透過 PR。規則 B：3 個 required status check 必須通過。</p>
+<p>規則 A 有 bypass 名單可以放人。規則 B 在 classic 底下沒有任何身分豁免，唯一開關是 Include administrators，而 <code>github-actions[bot]</code> 永遠不是 admin。bot 直接 push 的 commit 沒有經過 PR，<code>Build Application</code>、<code>White-box Security Scan</code>、<code>Validate Commit Messages</code> 都不會出現在它身上，規則 B 必然擋下。換成 GitHub App token 或 PAT 也一樣，token 種類不會讓 check 憑空出現。</p>
+<p>ruleset 的 bypass list 能整組豁免，但要遷移保護設定，而且「個人 repo 的 bypass 名單能不能選到 bot」沒有驗證過。最後的決定是繞開：開一個不設任何保護的 <code>notes-deploy</code>，CI 直接 push 它的 <code>main</code>。<code>notes</code> 的保護設定一個字都沒動。</p>
+<p>拆開後附帶解掉兩件事。CI 寫的是別的 repo，<code>notes</code> 不會收到 push 事件，<code>ci.yml</code> 不會被自己的 bump 再觸發，所以 bump commit 不需要 skip-ci 標記，也不需要 <code>paths-ignore</code>。rollback 時直接 revert，不用等 PR 與 check。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="GH BS BP DEPLOY"></div><figcaption>位置：GitHub：liaooliver/notes（PR、branch protection）、ci.yml › bump-staging、ci.yml › bump-production、liaooliver/notes-deploy</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>classic branch protection</dt><dd>Settings → Branches 那一套。bypass 名單只解「必須走 PR」，解不了 required check。</dd></div><div><dt>required status check</dt><dd>指定的 check 必須在這個 commit 上成功才能進分支。沒跑過的 commit 等於沒通過。</dd></div><div><dt>GH006 / GH013</dt><dd>被擋時的錯誤碼。GH006 來自 classic，GH013 來自 ruleset，看碼就知道是哪一套。</dd></div><div><dt>ruleset bypass list</dt><dd>新版保護機制的豁免名單，整組規則一起豁免。本專案沒有採用。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant B as bump job（bot）
+    participant N as notes main（classic 保護）
+    participant D as notes-deploy main（無保護）
+    participant C as notes 的 ci.yml
+    B->>N: git push（同 repo deploy/ 方案）
+    N->>N: 規則 A：這個 commit 沒有走 PR
+    N->>N: 規則 B：3 個 required check 在這個 commit 上不存在
+    N--xB: GH006 Protected branch update failed
+    Note over B,N: 換 App token 或 PAT，規則 B 照樣成立
+    B->>D: git push（deploy key，定案做法）
+    D-->>B: 27d7c79..02a6026  HEAD -> main
+    Note over C: notes 沒有新的 push 事件，ci.yml 不會被觸發
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="1 2 4" tabindex="0">
+          <div class="snip-file">GitHub 設定 · Branches（notes 的 main 與 staging，4-a 盤點）</div>
+          <pre><code><span>機制: classic branch protection（Rulesets 頁是空的）</span>
+<span class="hl">Require a pull request before merging: 開啟</span>
+<span>  required_approving_review_count: 0</span>
+<span>  bypass 名單: 空的</span>
+<span class="hl">Require status checks to pass: 開啟</span>
+<span>  - Build Application</span>
+<span>  - White-box Security Scan</span>
+<span>  - Validate Commit Messages</span>
+<span class="hl">Include administrators: 關閉（admin 可繞過，bot 不是 admin）</span>
+<span>Restrict who can push: 未啟用</span>
+<span>Force push: 禁止</span></code></pre>
+          <p class="snip-why">依 docs/gitops-roadmap.md 4-a 用 gh api 讀出的實際值；兩條分支完全相同。</p>
+        </div>
+        <div class="snip" data-steps="3" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md › run #32 的錯誤訊息</div>
+          <pre><code><span>remote: error: GH006: Protected branch update failed for refs/heads/main.</span>
+<span class="hl">remote: - Changes must be made through a pull request.      ← 規則 A</span>
+<span class="hl">remote: - 3 of 3 required status checks are expected.       ← 規則 B</span></code></pre>
+          <p class="snip-why">同一個 push 被兩條規則擋下，兩行各對應一條。</p>
+        </div>
+        <div class="snip" data-steps="4 5" tabindex="0">
+          <div class="snip-file">notes-deploy/README.md</div>
+          <pre><code><span class="hl">`notes` 的 `main` 與 `staging` 跑在 **classic branch protection** 上，required status check **沒有任何針對特定身分的豁免開關**。CI 產生的 image bump commit 不會觸發任何 check，所以那條規則必然成立——換 GitHub App token 或 PAT 都一樣失敗。</span>
+<span></span>
+<span class="hl">**這個 repo 刻意不設任何 branch protection**，CI 用 deploy key 直接 push 進 `main`。完整推導見 [`docs/gitops-roadmap.md` 第 2.2 節](https://github.com/liaooliver/notes/blob/main/docs/gitops-roadmap.md)。</span></code></pre>
+          <p class="snip-why">拆 repo 的具體理由，以及 notes-deploy 刻意不設保護。</p>
+        </div>
+        <div class="snip" data-steps="5 7" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>          git add overlays/staging/kustomization.yaml</span>
+<span>          git diff --cached --quiet &amp;&amp; { echo "manifest 沒有變化，不用 commit"; exit 0; }</span>
+<span>          # 訊息用純 ASCII：全形箭頭要賭 commitlint 的 subject 規則怎麼判，不值得</span>
+<span class="hl">          # 不需要 [skip ci]：這是另一個 repo，notes 的 ci.yml 根本看不到它</span>
+<span class="hl">          git commit -m "chore(deploy): bump staging image to ${IMAGE_TAG}"</span></code></pre>
+          <p class="snip-why">commit 訊息沒有 skip-ci 標記是刻意的：寫的是另一個 repo。</p>
+        </div>
+      </aside></div></div>
+  
+  <div class="evidence"><b>實際發生過</b><p><b>run #32</b>：semantic-release 的 <code>@semantic-release/git</code> 想把 CHANGELOG 推回 <code>main</code>，被 <code>GH006</code> 擋下，錯誤同時列出「Changes must be made through a pull request」與「3 of 3 required status checks are expected」。manifest bump 會踩到一模一樣的兩條規則。</p>
+<p><b>4-a 盤點（2026-09-19）</b>：用 <code>gh api repos/liaooliver/notes/branches/&lt;branch&gt;/protection</code> 讀出 <code>main</code> 與 <code>staging</code> 的設定，確認是 classic、bypass 名單空的、Include administrators 關閉。同日 <code>docs/gitops-roadmap.md</code> 第 2.2 節從「同 repo deploy/」改成「獨立 notes-deploy」。</p>
+<p><b>同日實測</b>：一條拋棄式 workflow 用 deploy key 把 <code>fcf76a8</code> 推進 <code>notes-deploy</code> 的 <code>main</code>，<code>notes</code> 的 Actions 沒有多出任何 run。循環觸發不存在是實測結果，不是推論。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>bot 自己開 PR 再 auto-merge 是死路：GITHUB_TOKEN 開的 PR 不觸發 workflow，三個 check 永遠 Pending，而且 repo 的 allow_auto_merge 是 false。</li><li>notes-deploy 是 public 且不設保護：永遠不要 commit k8s Secret，Secret 的 data 只是 base64，不是加密。</li><li>paths-ignore 閃 required check 會造成死結：純 deploy 改動的 PR 永遠等不到 Build Application，rollback 也 merge 不進去。</li></ul></div>
+</article>
+
+<article class="kp" id="ops-03">
+  <div class="kp-head"><span class="id">OPS-03</span><span class="where">ci.yml › bump-* › Checkout config repo / Commit and Push</span></div>
+  <h2>deploy key：CI 怎麼拿到寫 notes-deploy 的權限</h2>
+  <p class="tldr">GITHUB_TOKEN 只對 notes 自己有效。CI 用存成 secret 的 SSH 私鑰寫 notes-deploy；這種 push 會觸發 notes-deploy 的 Manifest Check，GITHUB_TOKEN 做出的 push 則不會觸發任何 workflow。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>每個 job 自動拿到的 <code>GITHUB_TOKEN</code>，權限只限觸發它的 repo，也就是 <code>notes</code>。要寫 <code>notes-deploy</code> 需要另一把憑證。deploy key 是一組 SSH key：公鑰掛在 <code>notes-deploy</code> 的 Deploy keys 並勾 write，私鑰存成 <code>notes</code> 的 Actions secret <code>DEPLOY_REPO_SSH_KEY</code>。</p>
+<p>runtime 時，<code>actions/checkout</code> 收到 <code>ssh-key</code> 參數，會把私鑰寫進 runner 的暫存檔、設定 <code>core.sshCommand</code>，改走 SSH clone。之後在 <code>notes-deploy</code> 目錄裡的 <code>git push</code> 就用這把 key。job 結束的 post step 會把 key 檔與設定刪掉。</p>
+<p>為什麼不用 PAT：PAT 綁個人帳號，預設權限橫跨帳號下所有 repo，還會過期。deploy key 只綁 <code>notes-deploy</code> 一個 repo，外洩也碰不到 <code>notes</code>。fork 來的 PR 拿不到這個 secret，因為三個 workflow 都用 <code>pull_request</code>，沒有用 <code>pull_request_target</code>。</p>
+<p>GitHub 有一條規則：<code>GITHUB_TOKEN</code> 做出的事件不會再建立新的 workflow run，用來防止 workflow 互相無限觸發。deploy key 的 push 不受這條規則限制，所以每個 bump commit 進 <code>notes-deploy</code> 都會觸發它自己的 <code>Manifest Check</code>，自動跑一次 <code>kubectl kustomize</code>。如果 bump 把 overlay 改壞，那裡會先紅。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="BS BP DEPLOY MC"></div><figcaption>位置：ci.yml › bump-staging、ci.yml › bump-production、liaooliver/notes-deploy、notes-deploy › manifest-check.yml</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>deploy key</dt><dd>掛在單一 repo 上的 SSH 公鑰，可選唯讀或可寫。權限範圍就是那一個 repo。</dd></div><div><dt>GITHUB_TOKEN</dt><dd>每個 job 自動發的短效 token，只對觸發的 repo 有效；它產生的 push 不觸發 workflow。</dd></div><div><dt>ssh-key（checkout 參數）</dt><dd>actions/checkout 用它設定 SSH clone，並讓同一目錄後續的 git push 沿用。</dd></div><div><dt>non-fast-forward</dt><dd>push 時遠端已經有你沒有的 commit。兩個 bump 同時寫 main 就會發生。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant R as runner（bump job）
+    participant S as notes 的 Actions secrets
+    participant D as notes-deploy main
+    participant M as Manifest Check
+    R->>S: 讀 secrets.DEPLOY_REPO_SSH_KEY
+    S-->>R: 私鑰（log 裡被遮成 ***）
+    R->>R: checkout 寫入暫存 key 檔，設定 core.sshCommand
+    R->>D: git clone（SSH，fetch-depth 0）
+    R->>R: kustomize edit set image ×2，git commit
+    R->>D: git push origin HEAD:main
+    D->>D: 確認這把 deploy key 有 write
+    alt fast-forward
+        D-->>R: 27d7c79..02a6026  HEAD -> main
+    else 另一個 bump 先推了
+        R->>D: git pull --rebase origin main，再 push 一次
+    end
+    R->>R: post step：Removing SSH key
+    D->>M: push 事件（不是 GITHUB_TOKEN 產生的，照常觸發）
+    M->>M: kubectl kustomize overlays/staging、overlays/production
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0 1 6" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md › Phase 3-b</div>
+          <pre><code><span># 1) 產一組專用金鑰（不要設 passphrase，CI 沒有人可以輸入）</span>
+<span>ssh-keygen -t ed25519 -N "" -C "notes-ci@deploy" -f /tmp/notes-deploy-key</span>
+<span></span>
+<span># 2) 公鑰 → notes-deploy 的 Deploy keys，務必勾 write</span>
+<span class="hl">gh repo deploy-key add /tmp/notes-deploy-key.pub \</span>
+<span class="hl">  --repo liaooliver/notes-deploy --title "notes CI" --allow-write</span>
+<span></span>
+<span># 3) 私鑰 → notes 的 Actions secret</span>
+<span class="hl">gh secret set DEPLOY_REPO_SSH_KEY --repo liaooliver/notes &lt; /tmp/notes-deploy-key</span></code></pre>
+          <p class="snip-why">一次性設定：公鑰進 notes-deploy（要勾 write），私鑰進 notes 的 secret。</p>
+        </div>
+        <div class="snip" data-steps="0 2 3" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>      # 這次 checkout 要 depth 0 —— 下面 push 撞車時要 git pull --rebase，</span>
+<span>      # shallow clone 做 rebase 會出事。兩個 checkout 的需求剛好相反。</span>
+<span>      - name: Checkout config repo</span>
+<span>        uses: actions/checkout@v7</span>
+<span>        with:</span>
+<span class="hl">          repository: liaooliver/notes-deploy</span>
+<span class="hl">          ssh-key: ${{ secrets.DEPLOY_REPO_SSH_KEY }}</span>
+<span>          path: notes-deploy</span>
+<span class="hl">          fetch-depth: 0</span></code></pre>
+          <p class="snip-why">ssh-key 參數讓 checkout 改走 SSH；depth 0 是為了之後可能要 rebase。</p>
+        </div>
+        <div class="snip" data-steps="5 7 8" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>          # staging 與 main 兩邊可能同時 push notes-deploy → non-fast-forward。</span>
+<span>          # rebase 重試一次；仍失敗就讓 job 紅掉，不要靜默吞掉。</span>
+<span class="hl">          git push origin HEAD:main \</span>
+<span class="hl">            || { git pull --rebase origin main &amp;&amp; git push origin HEAD:main; } \</span>
+<span>            || { echo "::error::push 到 notes-deploy 失敗"; exit 1; }</span></code></pre>
+          <p class="snip-why">push 失敗先 rebase 重試一次，仍失敗就讓 job 紅掉，不靜默吞掉。</p>
+        </div>
+        <div class="snip" data-steps="10 11" tabindex="0">
+          <div class="snip-file">notes-deploy/.github/workflows/manifest-check.yml</div>
+          <pre><code><span class="hl"># PR 與 push 都跑。bump commit 是 deploy key 推的，</span>
+<span class="hl"># 不像 GITHUB_TOKEN 那樣會被「bot push 不觸發 workflow」的規則擋掉，</span>
+<span># 所以每次 bump 都會自動驗一次 kustomize 算不算得出來。</span>
+<span class="hl">on: [push, pull_request]</span>
+<span></span>
+<span>permissions:</span>
+<span>  contents: read</span>
+<span></span>
+<span>jobs:</span>
+<span>  manifest-check:</span>
+<span>    name: Validate Deploy Manifests</span>
+<span>    runs-on: ubuntu-latest</span>
+<span>    steps:</span>
+<span>      - uses: actions/checkout@v7</span>
+<span>      - name: kustomize build</span>
+<span>        run: |</span>
+<span>          for overlay in overlays/*/; do</span>
+<span>            echo "=== ${overlay} ==="</span>
+<span class="hl">            kubectl kustomize "${overlay}" &gt; /dev/null || exit 1</span>
+<span>          done</span></code></pre>
+          <p class="snip-why">註解直接寫明：deploy key 的 push 會觸發這個 workflow。</p>
+        </div>
+      </aside></div></div>
+  
+  <div class="evidence"><b>實際發生過</b><p><b>run #85（36241885140），job 108404120871 的 log</b>，2026-09-27 04:18 UTC：</p>
+<ul><li><code>[main 02a6026] chore(deploy): bump production image to sha-91b7f1149b02d469b145af0245da53311d7d8ae5</code></li>
+<li><code>To github.com:liaooliver/notes-deploy.git</code>、<code>27d7c79..02a6026  HEAD -&gt; main</code>：remote 是 SSH 位址，走的是 deploy key。</li>
+<li>post step 印出 <code>Removing SSH key '/home/runner/work/_temp/…'</code> 與 <code>Removing SSH command configuration</code>。</li>
+<li>各步驟耗時：Checkout config repo 1 秒、Set image tags 2 秒、Commit and Push 1 秒。</li></ul>
+<p><b>2026-09-19 實測</b>（roadmap Phase 3-b）：deploy key 推的 <code>fcf76a8</code> 觸發了 <code>notes-deploy</code> 的 <code>Manifest Check</code> 且是綠的，<code>notes</code> 沒有多出 run。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>deploy key 沒勾 --allow-write：clone 成功、push 失敗，錯誤只說 access denied，不會提到是少勾一個選項。</li><li>checkout notes-deploy 要 fetch-depth: 0：push 撞車時要 git pull --rebase，shallow clone 做 rebase 會出事。</li><li>bump-staging 與 bump-production 寫同一條 main，時間靠近就 non-fast-forward；靠 rebase 重試一次處理。</li></ul></div>
+</article>
+
+<article class="kp" id="ops-04">
+  <div class="kp-head"><span class="id">OPS-04</span><span class="where">notes-deploy › base/ + overlays/staging · overlays/production</span></div>
+  <h2>kustomize：一份 base、兩個 overlay 目錄</h2>
+  <p class="tldr">base 放 5 份共用資源，overlay 只寫三種差異：namespace、兩個 image 的 newTag、Ingress host。kustomize build 把兩者合成完整 YAML，Argo CD 與 Manifest Check 跑的都是這一步。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>kustomize 是 kubectl 內建的 YAML 組合工具，沒有模板語法。<code>base/kustomization.yaml</code> 列出 5 份資源：兩個 Deployment、兩個 Service、一個 Ingress。base 裡的 image 沒有 tag，Ingress 的 host 寫死 <code>notes.local</code>，也沒有 namespace。</p>
+<p>每個 overlay 用 <code>resources: - ../../base</code> 引入 base，再疊三種差異。<code>namespace:</code> 寫進每個物件的 <code>metadata.namespace</code>。<code>images:</code> 依 <code>name</code> 比對所有 container 的 <code>image</code> 欄位，補上 <code>newTag</code>。<code>patches:</code> 是一段 JSON6902 patch，<code>op: replace</code> 把 <code>/spec/rules/0/host</code> 換掉，<code>target</code> 限定只作用在名為 <code>notes</code> 的 Ingress。</p>
+<p>環境靠目錄分，不靠分支。兩個 Argo CD Application 都追 <code>main</code>，只差 <code>path</code>。如果用分支分環境，把 staging 驗過的設定帶到 production 就變成一次 merge，會夾帶不想帶的改動。用目錄時，production 的 bump 只改 <code>overlays/production/kustomization.yaml</code> 裡那兩行。</p>
+<p>會執行 <code>kustomize build</code> 的有三個地方：Argo CD 的 repo-server 每次產生 manifest、<code>notes-deploy</code> 的 Manifest Check 每次 push、你在本機驗證。CI 的 bump job 用的是另一個子指令 <code>kustomize edit set image</code>，它不 build，只改寫 overlay 檔。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="DEPLOY MC ARGO"></div><figcaption>位置：liaooliver/notes-deploy、notes-deploy › manifest-check.yml、Argo CD</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>base</dt><dd>所有環境共用的資源。本專案 5 份，不帶 namespace、不帶 image tag。</dd></div><div><dt>overlay</dt><dd>引入 base 再疊差異的目錄。一個環境一個。</dd></div><div><dt>images[].newTag</dt><dd>依 image 名稱比對後補上的 tag。CI 只改這個欄位。</dd></div><div><dt>JSON6902 patch</dt><dd>用 op / path / value 精確改某個欄位；這裡用 replace 換 Ingress host。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">kustomize 合成 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"ovs","c":1,"r":0,"l":["overlays/staging","namespace · images · patch"]},{"id":"base","c":0,"r":1,"l":["base/","5 份共用資源"]},{"id":"edit","c":1,"r":1,"l":["kustomize edit set image","CI 只改 newTag"]},{"id":"ovp","c":1,"r":2,"l":["overlays/production","namespace · images · patch"]},{"id":"bs","c":2,"r":0,"l":["kustomize build","staging"],"shape":"diamond"},{"id":"bp","c":2,"r":2,"l":["kustomize build","production"],"shape":"diamond"},{"id":"outs","c":3,"r":0,"l":["最終 YAML","notes-staging · notes-staging.local"]},{"id":"outp","c":3,"r":2,"l":["最終 YAML","notes-production · notes.local"]}],"edges":[{"id":"e1","from":"base","to":"ovs","label":"resources: ../../base"},{"id":"e2","from":"base","to":"ovp","label":"resources: ../../base"},{"id":"e3","from":"edit","to":"ovs","dashed":true},{"id":"e4","from":"edit","to":"ovp","dashed":true},{"id":"e5","from":"ovs","to":"bs"},{"id":"e6","from":"bs","to":"outs"},{"id":"e7","from":"ovp","to":"bp"},{"id":"e8","from":"bp","to":"outp"}],"steps":[{"n":["base"],"e":[],"t":"base：5 份資源，image 沒 tag、host 是 notes.local、沒有 namespace"},{"n":["ovs"],"e":["e1"],"t":"overlays/staging 用 ../../base 引入，再疊上 staging 的差異"},{"n":["ovp"],"e":["e2"],"t":"overlays/production 引入同一份 base，結構相同，只有值不同"},{"n":["edit","ovs","ovp"],"e":["e3","e4"],"t":"CI 的 kustomize edit set image 只改 overlay 裡的 newTag"},{"n":["bs"],"e":["e5"],"t":"build：namespace 寫進每個物件、images 補 tag、patch 換 host"},{"n":["outs"],"e":["e6"],"t":"staging 結果：notes-staging、sha-64430d0…、notes-staging.local"},{"n":["bp","outp"],"e":["e7","e8"],"t":"production 同一套流程：notes-production、sha-91b7f11…、notes.local"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0" tabindex="0">
+          <div class="snip-file">notes-deploy/base/kustomization.yaml</div>
+          <pre><code><span>apiVersion: kustomize.config.k8s.io/v1beta1</span>
+<span>kind: Kustomization</span>
+<span class="hl">resources:</span>
+<span class="hl">  - web-deployment.yaml</span>
+<span class="hl">  - web-service.yaml</span>
+<span class="hl">  - api-deployment.yaml</span>
+<span class="hl">  - api-service.yaml</span>
+<span class="hl">  - ingress.yaml</span></code></pre>
+          <p class="snip-why">base 的全部內容：只是列出 5 份檔案。</p>
+        </div>
+        <div class="snip" data-steps="0 4" tabindex="0">
+          <div class="snip-file">notes-deploy/base/web-deployment.yaml</div>
+          <pre><code><span>      containers:</span>
+<span>        - name: web</span>
+<span class="hl">          image: ghcr.io/liaooliver/notes   # tag 由 overlay 的 images: 覆寫</span>
+<span>          ports:</span>
+<span>            - containerPort: 80</span></code></pre>
+          <p class="snip-why">image 故意不寫 tag，由 overlay 的 images 依名稱補上。</p>
+        </div>
+        <div class="snip" data-steps="0 4" tabindex="0">
+          <div class="snip-file">notes-deploy/base/ingress.yaml</div>
+          <pre><code><span>apiVersion: networking.k8s.io/v1</span>
+<span>kind: Ingress</span>
+<span>metadata:</span>
+<span>  name: notes</span>
+<span>spec:</span>
+<span>  rules:</span>
+<span class="hl">    - host: notes.local   # overlay 用 patch 換成 notes-staging.local / notes.local</span></code></pre>
+          <p class="snip-why">patch 的 path /spec/rules/0/host 指的就是這一行。</p>
+        </div>
+        <div class="snip" data-steps="1 3 4 5" tabindex="0">
+          <div class="snip-file">notes-deploy/overlays/staging/kustomization.yaml</div>
+          <pre><code><span class="hl">namespace: notes-staging</span>
+<span>resources:</span>
+<span class="hl">- ../../base</span>
+<span>  # Phase 9 加了 api 之後這裡會變成兩筆</span>
+<span>images:</span>
+<span>- name: ghcr.io/liaooliver/notes</span>
+<span>  newName: ghcr.io/liaooliver/notes</span>
+<span class="hl">  newTag: sha-64430d0759dbc47064cac1ce9f21beebb84bc192</span>
+<span>- name: ghcr.io/liaooliver/notes-api</span>
+<span>  newName: ghcr.io/liaooliver/notes-api</span>
+<span class="hl">  newTag: sha-64430d0759dbc47064cac1ce9f21beebb84bc192</span>
+<span>patches:</span>
+<span>- patch: |</span>
+<span>    - op: replace</span>
+<span class="hl">      path: /spec/rules/0/host</span>
+<span class="hl">      value: notes-staging.local</span>
+<span>  target:</span>
+<span>    kind: Ingress</span>
+<span>    name: notes</span></code></pre>
+          <p class="snip-why">三種差異：namespace、images 兩筆、一段 JSON6902 patch。</p>
+        </div>
+        <div class="snip" data-steps="2 6" tabindex="0">
+          <div class="snip-file">notes-deploy/overlays/production/kustomization.yaml</div>
+          <pre><code><span class="hl">namespace: notes-production</span>
+<span>resources:</span>
+<span>- ../../base</span>
+<span>images:</span>
+<span>- name: ghcr.io/liaooliver/notes</span>
+<span>  newName: ghcr.io/liaooliver/notes</span>
+<span class="hl">  newTag: sha-91b7f1149b02d469b145af0245da53311d7d8ae5</span>
+<span>- name: ghcr.io/liaooliver/notes-api</span>
+<span>  newName: ghcr.io/liaooliver/notes-api</span>
+<span class="hl">  newTag: sha-91b7f1149b02d469b145af0245da53311d7d8ae5</span>
+<span>patches:</span>
+<span>- patch: |</span>
+<span>    - op: replace</span>
+<span>      path: /spec/rules/0/host</span>
+<span class="hl">      value: notes.local</span></code></pre>
+          <p class="snip-why">跟 staging 同結構，只差 namespace、tag 與 host 三個值。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">kustomize build overlays/staging | grep -nE '^kind:|namespace:|image:|host:'</span>
+<span class="cm"># 在 notes-deploy@02a6026 用 kustomize v5.4.3 實跑（與 kubectl kustomize 同一套引擎）</span>
+2:kind: Service
+5:  namespace: notes-staging
+15:kind: Service
+18:  namespace: notes-staging
+28:kind: Deployment
+31:  namespace: notes-staging
+45:      - image: ghcr.io/liaooliver/notes-api:sha-64430d0759dbc47064cac1ce9f21beebb84bc192
+62:kind: Deployment
+65:  namespace: notes-staging
+79:      - image: ghcr.io/liaooliver/notes:sha-64430d0759dbc47064cac1ce9f21beebb84bc192
+96:kind: Ingress
+99:  namespace: notes-staging
+102:  - host: notes-staging.local</pre><p>改 overlay 前後各跑一次，確認三種差異都有套上。輸出順序是 Service、Deployment、Ingress，kustomize 會依 kind 排序，不照 base 的列法。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p><b>kustomize edit 會重寫整份檔案。</b>第一筆 CI bump <code>377d045</code>（2026-09-25 15:42 UTC）的 diff 不只改 tag：整份 overlay 的縮排被改掉、patches 的欄位順序被重排、原本寫在 <code>newTag</code> 行尾的註解「由 CI 的 kustomize edit set image 覆寫」消失，另一行註解「Phase 9 加了 api 之後這裡會變成兩筆」被搬到 <code>resources</code> 底下，到今天還掛在那裡。本機拿 <code>b29050f</code> 版的 overlay 重跑 <code>kustomize edit set image</code>，得到一樣的結果。</p>
+<p>在那之前，staging 的 tag 是人手動 pin 的：<code>b29050f chore(staging): pin image to sha-cc1ef4f</code>（2026-09-24），把 bootstrap 時的佔位值 <code>sha-0000…</code> 換掉。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>kustomize edit set image 會重寫整份 overlay：縮排改變、行尾註解消失。重要說明不要寫在 overlay 的註解裡。</li><li>images 的 name 要跟 base 裡的 image 字串完全一致（不含 tag）。對不上時 kustomize 不報錯，image 就維持沒有 tag。</li><li>kubectl kustomize 只能 build 不能 edit；bump job 用的是 ubuntu-latest runner 內建的獨立 kustomize 執行檔。</li></ul></div>
+</article>
+
+<article class="kp" id="ops-05">
+  <div class="kp-head"><span class="id">OPS-05</span><span class="where">ci.yml › docker › Docker Metadata / bump-* › IMAGE_TAG</span></div>
+  <h2>image tag 用 sha-40 碼 commit，staging 與 production 不是同一顆 image</h2>
+  <p class="tldr">tag 用完整 40 碼 commit SHA：不會碰撞、能直接對回原始碼。production 跑的是 main 的 merge commit 重新 build 的 image，跟 staging 原始碼相同，但不是同一次 build。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p><code>docker/metadata-action</code> 的 <code>type=sha,prefix=sha-,format=long</code> 產生 <code>sha-</code> 加上 <code>github.sha</code> 全部 40 碼。bump job 不讀 docker job 的 outputs（matrix 的兩個分身會互相覆蓋），自己組 <code>sha-${{ github.sha }}</code>。兩邊都從同一個 <code>github.sha</code> 算，字串必然一致。web 與 api 兩顆 image 也共用這個 tag。</p>
+<p>不用 <code>latest</code>：tag 字串不變，Deployment spec 就不變，Argo CD 看不到差異，不會觸發 rolling update；Git 也看不出 cluster 跑哪一版，rollback 沒有東西可以 revert。不用 7 碼短 SHA：2^28 的空間有機會碰撞，撞到時新 image 會覆寫同一個 GHCR tag，rollback 拉到的就不是當初驗過的東西。40 碼 tag 仍可以被重新 push 覆寫，真正不可變的是 digest（<code>@sha256:…</code>）。選 tag 是為了讓 <code>git log</code> 讀得出該回到哪一版。</p>
+<p>staging 與 production 不是同一顆 image。<code>staging → main</code> 用 merge commit 合併，一定產生新的 commit，<code>github.sha</code> 不同，push main 時 docker job 用新的 SHA 再 build 一次。原始碼完全相同，產物是兩次獨立 build。嚴格來說 production 跑的不是 staging 驗過的那份二進位，只是同一份原始碼的另一次 build。</p>
+<p>這個專案接受這個代價：build 只有 <code>COPY</code> 與 <code>vite build</code>，可重現性高，而且 main 保有獨立性，hotfix 可以不經 staging。另一種做法是 promote：<code>bump-production</code> 直接複製 staging overlay 的 tag，main 不 build。依賴沒鎖版、build 結果不穩定時，就該改成那樣。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="DOCKER GHCR BS ENV BP"></div><figcaption>位置：ci.yml › docker（matrix web / api）、GHCR：ghcr.io/liaooliver/notes、notes-api、ci.yml › bump-staging、GitHub Environment：production、ci.yml › bump-production</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>github.sha</dt><dd>觸發這個 run 的 commit 的完整 40 碼 SHA。push main 時是那個 merge commit。</dd></div><div><dt>merge commit</dt><dd>有兩個 parent 的 commit。staging → main 的 PR 一定用它，SHA 必然是新的。</dd></div><div><dt>digest</dt><dd>registry 依內容算出的 sha256。tag 可重新指向，digest 不行。</dd></div><div><dt>promote</dt><dd>把 staging 驗過的同一個 tag 複製給 production，不重 build。本專案未採用。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant G as notes repo
+    participant A as Actions（ci.yml）
+    participant H as GHCR
+    participant E as Environment production
+    participant D as notes-deploy main
+    G->>A: push staging：64430d0（PR #43 squash）
+    A->>H: push notes / notes-api :sha-64430d0…
+    A->>D: bump staging → sha-64430d0…（27d7c79）
+    G->>G: PR #44 staging → main，產生 merge commit 91b7f11<br/>parents：1044bc4（main）+ 64430d0（staging）
+    G->>A: push main：91b7f11（run #85）
+    A->>H: 再 build 一次，push :sha-91b7f11…
+    Note over G,H: git diff 64430d0 91b7f11 為空：同一份原始碼，兩次 build
+    A->>E: bump-production 進入 waiting
+    E-->>A: 2026-09-27 04:18 UTC 放行，等了約 15 小時 50 分
+    A->>D: bump production → sha-91b7f11…（02a6026）
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="1 5" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>      - name: Docker Metadata (tags &amp; labels)</span>
+<span>        id: meta</span>
+<span>        uses: docker/metadata-action@v6</span>
+<span>        with:</span>
+<span>          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.svc.image }}</span>
+<span>          tags: |</span>
+<span class="hl">            type=sha,prefix=sha-,format=long</span>
+<span>            type=ref,event=branch</span></code></pre>
+          <p class="snip-why">format=long 就是 40 碼；另一條規則額外打 staging / main 分支名 tag，manifest 不用它。</p>
+        </div>
+        <div class="snip" data-steps="2 9" tabindex="0">
+          <div class="snip-file">.github/workflows/ci.yml</div>
+          <pre><code><span>      - name: Set image tags in overlays/staging</span>
+<span>        env:</span>
+<span>          # 不從 needs.docker.outputs 拿——matrix job 沒有可靠的 outputs。</span>
+<span>          # 兩個 image 都是從這個 commit build 出來的，tag 必然相同。</span>
+<span class="hl">          IMAGE_TAG: sha-${{ github.sha }}</span>
+<span>        working-directory: notes-deploy/overlays/staging</span>
+<span>        run: |</span>
+<span class="hl">          kustomize edit set image "ghcr.io/liaooliver/notes=ghcr.io/liaooliver/notes:${IMAGE_TAG}"</span>
+<span class="hl">          kustomize edit set image "ghcr.io/liaooliver/notes-api=ghcr.io/liaooliver/notes-api:${IMAGE_TAG}"</span>
+<span>          git --no-pager diff</span></code></pre>
+          <p class="snip-why">bump job 自己用 github.sha 組 tag，兩個 image 各 set 一次。</p>
+        </div>
+        <div class="snip" data-steps="3 6" tabindex="0">
+          <div class="snip-file">docs/gitops-roadmap.md › production 跑的不是 staging 那個 image</div>
+          <pre><code><span>staging merge   → merge commit SHA = aaa…  → build → notes:sha-aaa…  → 部署 staging</span>
+<span class="hl">staging → main  → merge commit SHA = bbb…  → build → notes:sha-bbb…  → 部署 production</span>
+<span>                  ↑ PR 合併一定會產生新的 commit，SHA 必然不同</span></code></pre>
+          <p class="snip-why">文件自己承認的代價，這一節照實寫。</p>
+        </div>
+        <div class="snip" data-steps="9" tabindex="0">
+          <div class="snip-file">notes-deploy/overlays/production/kustomization.yaml</div>
+          <pre><code><span>images:</span>
+<span>- name: ghcr.io/liaooliver/notes</span>
+<span>  newName: ghcr.io/liaooliver/notes</span>
+<span class="hl">  newTag: sha-91b7f1149b02d469b145af0245da53311d7d8ae5</span>
+<span>- name: ghcr.io/liaooliver/notes-api</span>
+<span>  newName: ghcr.io/liaooliver/notes-api</span>
+<span class="hl">  newTag: sha-91b7f1149b02d469b145af0245da53311d7d8ae5</span></code></pre>
+          <p class="snip-why">2026-09-27 現況：production 是 sha-91b7f11…，同一時間 staging overlay 是 sha-64430d0…，兩個不同的 commit。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">git log -1 --format='%h parents=%p %s' 91b7f11</span>
+91b7f11 parents=1044bc4 64430d0 Merge pull request #44 from liaooliver/staging</pre><p>production 的 tag 對應的是 merge commit；第二個 parent 就是 staging 跑的那個 commit。</p></div><div class="term"><pre><span class="cmd">git diff --stat 64430d0 91b7f11</span>
+<span class="cm"># 沒有任何輸出（exit 0）：兩個 commit 的檔案樹完全相同</span></pre><p>確認 staging 與 production 的原始碼一樣。image 仍是兩次 build 的產物。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p><b>2026-09-26 這一輪 promote：</b></p>
+<ul><li><code>liaooliver/notes#43</code> squash 進 staging 成為 <code>64430d0</code>，run #83（36241721215）build 並 bump，<code>notes-deploy</code> 在 12:25:29 UTC 出現 <code>27d7c79</code>。</li>
+<li>15 秒後 <code>liaooliver/notes#44</code>（staging → main）合併成 <code>91b7f11</code>，run #85（36241885140）在 12:25:48 UTC 開始，web 與 api 兩個 <code>Build &amp; Push</code> 又各跑一次（約 50 秒）。</li>
+<li><code>Ops Handoff / Bump Production Manifest</code> 在 12:27:49 UTC 建立，隔天 04:18:29 UTC 才開始執行，中間 15 小時 50 分停在 Environment 等 Approve。</li></ul>
+<p>前一輪同樣形狀：<code>liaooliver/notes#41</code> 的 merge commit <code>1044bc4</code>（parents <code>3f51150</code> + <code>ab27804</code>），staging 跑 <code>sha-ab27804…</code>，production 跑 <code>sha-1044bc4…</code>。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>promote PR 一定要用 merge commit。squash 會讓 staging 與 main 失去共同祖先，下一次 promote 每個檔案都衝突（liaooliver/notes#30）。</li><li>matrix job 的 outputs 會互相覆蓋只剩最後一個，所以 bump job 不從 needs.docker.outputs 拿 tag。</li><li>Approve 可能等好幾小時。bump 前的「Abort if branch has moved on」確認 origin/main 還等於 GITHUB_SHA，避免把舊 tag 寫回去。</li></ul></div>
+</article>
+
+<article class="kp" id="ops-06">
+  <div class="kp-head"><span class="id">OPS-06</span><span class="where">notes-deploy › argocd/notes-staging.yaml · notes-production.yaml</span></div>
+  <h2>Argo CD Application：一次 reconcile 做了什麼</h2>
+  <p class="tldr">Application 告訴 Argo CD 讀哪個 repo 的哪個分支與目錄、套進哪個 namespace。預設約每 3 分鐘比對一次。Sync 看「跟 Git 一不一樣」，Health 看「跑得好不好」，兩條軸互相獨立。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p><code>Application</code> 是 Argo CD 的 CRD。這個專案有兩個，放在 <code>notes-deploy/argocd/</code>，用 <code>kubectl apply -f argocd/</code> 手動建一次。<code>source</code> 決定讀什麼：<code>repoURL</code>、<code>targetRevision: main</code>、<code>path: overlays/staging</code>。<code>destination</code> 決定套到哪：同一個 cluster 的 <code>notes-staging</code>。repo 是 public，Argo CD 不需要 repo 憑證。</p>
+<p>runtime 時分兩個元件。<code>argocd-repo-server</code> 把 <code>targetRevision</code> 解析成 commit SHA，在那個 commit 的 <code>path</code> 跑 <code>kustomize build</code>，產出 desired manifest。<code>argocd-application-controller</code> 向 API server 讀 live 物件，逐一比對。預設約 180 秒做一次。VM 沒有公網 IP，GitHub 的 webhook 打不進來，只能靠 polling。</p>
+<p><code>automated</code> 讓 OutOfSync 時自動 apply。<code>prune: true</code>：Git 裡刪掉的資源，cluster 也刪。<code>selfHeal: true</code>：有人 <code>kubectl edit</code> 改了 cluster，比對發現漂移就改回 Git 的值。<code>CreateNamespace=true</code>：namespace 不存在時先建。production 也是 automated，人工閘只有 GitHub Environment 一道：沒人 Approve，overlay 不變，Argo CD 沒東西可以 sync。</p>
+<p>Sync status 比的是 Git 與 live 的 spec：Synced / OutOfSync。Health status 看資源實際狀態：Healthy / Progressing / Degraded / Missing。剛 apply 完是 Synced + Progressing，新 Pod 還沒通過 readinessProbe。Git 變了還沒 apply 是 OutOfSync + Healthy，舊版仍在正常服務。image 拉不到會停在 Synced + Progressing，超過 Deployment 的 <code>progressDeadlineSeconds</code>（預設 600 秒）後轉成 Degraded。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="ARGO DEPLOY NS_S NS_P K3S"></div><figcaption>位置：Argo CD、liaooliver/notes-deploy、namespace notes-staging、namespace notes-production、k3s cluster（Multipass VM）</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>targetRevision</dt><dd>Argo CD 追的分支或 commit。兩個 Application 都是 main，只差 path。</dd></div><div><dt>prune</dt><dd>Git 裡不存在、但 cluster 裡有 Argo CD 標記的物件，sync 時刪掉。</dd></div><div><dt>selfHeal</dt><dd>live 被手動改掉時，不等 Git 變動就自動改回 Git 的值。</dd></div><div><dt>Sync status</dt><dd>live spec 是否等於 Argo CD 目前認定的 Git revision 算出來的 spec。</dd></div><div><dt>Health status</dt><dd>依資源種類判斷的執行狀態，例如 Deployment 的新 Pod 是否都 Ready。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant C as notes-deploy main
+    participant R as argocd-repo-server
+    participant A as application-controller
+    participant K as k3s API server
+    participant P as notes-staging 的 Pod
+    loop 約每 180 秒（沒有 webhook）
+        A->>R: 取得 notes-staging 的 desired manifest
+        R->>C: git fetch main
+    end
+    C-->>R: 新 commit 27d7c79（bump staging）
+    R->>R: kustomize build overlays/staging
+    R-->>A: 5 個物件的 desired YAML
+    A->>K: 讀 live 物件
+    A->>A: diff：Deployment 的 image tag 不同，OutOfSync
+    A->>K: automated apply（namespace 不在就先建）
+    K->>P: 建新 ReplicaSet，起新 Pod
+    Note over A,P: Sync = Synced，Health = Progressing
+    P-->>K: readinessProbe 通過，舊 Pod 被刪
+    K-->>A: Health = Healthy
+    opt selfHeal：有人 kubectl edit 改了 live
+        A->>A: 下一次比對發現 live 不等於 Git
+        A->>K: 改回 Git 的值
+    end
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0 1 3 4" tabindex="0">
+          <div class="snip-file">notes-deploy/argocd/notes-staging.yaml</div>
+          <pre><code><span>spec:</span>
+<span>  project: default</span>
+<span>  source:</span>
+<span class="hl">    repoURL: https://github.com/liaooliver/notes-deploy.git</span>
+<span class="hl">    targetRevision: main             # notes-deploy 只有一條 main</span>
+<span class="hl">    path: overlays/staging           # 環境靠「目錄」分，不是靠分支</span>
+<span>  destination:</span>
+<span>    server: https://kubernetes.default.svc</span>
+<span class="hl">    namespace: notes-staging</span></code></pre>
+          <p class="snip-why">source 三欄決定 repo-server 去哪裡 build；destination 決定 controller 套到哪。</p>
+        </div>
+        <div class="snip" data-steps="7 12 13" tabindex="0">
+          <div class="snip-file">notes-deploy/argocd/notes-staging.yaml</div>
+          <pre><code><span>  syncPolicy:</span>
+<span class="hl">    automated:</span>
+<span>      prune: true      # Git 裡刪掉的資源，cluster 也跟著刪</span>
+<span class="hl">      selfHeal: true   # 有人手動 kubectl edit 改壞了，Argo CD 自動改回 Git 的版本</span>
+<span>    syncOptions:</span>
+<span class="hl">      - CreateNamespace=true</span></code></pre>
+          <p class="snip-why">OutOfSync 之後自動 apply，被手動改掉也會自動改回。</p>
+        </div>
+        <div class="snip" data-steps="7" tabindex="0">
+          <div class="snip-file">notes-deploy/argocd/notes-production.yaml</div>
+          <pre><code><span>  syncPolicy:</span>
+<span class="hl">    # 跟 staging 一樣全自動。人工閘只有一道，而且在上游的 GitHub Environment：</span>
+<span class="hl">    # 沒人按 Approve，CI 就不會改 overlays/production 的 image tag，Git 裡的</span>
+<span class="hl">    # desired state 不變，Argo CD 也就沒有東西可以 sync。閘已經擋在那裡，</span>
+<span>    # 在 Argo CD 再擋一次只會多一個容易忘記按的地方。</span>
+<span>    automated:</span>
+<span>      prune: true      # Git 裡刪掉的資源，cluster 也跟著刪</span>
+<span>      selfHeal: true   # 有人手動 kubectl edit 改壞了，Argo CD 自動改回 Git 的版本</span></code></pre>
+          <p class="snip-why">production 也全自動的理由：人工閘擋在上游，overlay 不變就沒有東西可 sync。</p>
+        </div>
+        <div class="snip" data-steps="9 10 11" tabindex="0">
+          <div class="snip-file">notes-deploy/base/web-deployment.yaml</div>
+          <pre><code><span class="hl">          readinessProbe:</span>
+<span class="hl">            httpGet:</span>
+<span>              path: /</span>
+<span>              port: 80</span></code></pre>
+          <p class="snip-why">Health 從 Progressing 轉 Healthy 的依據：新 Pod 通過這個 probe。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">kubectl -n argocd get applications</span>
+<span class="cm"># 示意輸出（依 manifest 推得）</span>
+NAME               SYNC STATUS   HEALTH STATUS
+notes-production   Synced        Healthy
+notes-staging      OutOfSync     Healthy</pre><p>SYNC 與 HEALTH 分兩欄讀。OutOfSync + Healthy 表示 Git 變了、還沒套，舊版仍正常服務。</p></div><div class="term"><pre><span class="cmd">kubectl -n argocd get app notes-staging -o jsonpath='{.status.sync.status} {.status.sync.revision}'</span>
+<span class="cm"># 示意輸出（依 manifest 推得）</span>
+Synced 27d7c79b57cf69b27d7d426183bfa27226d6c4bd</pre><p>revision 是 Argo CD 認定的 notes-deploy commit。跟 git log 第一筆比對，才知道它有沒有看到最新的 bump。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p><code>notes-deploy</code> 的 <code>a536a56</code>（2026-09-26）把 production Application 原本「選項 A 自動 / 選項 B 手動」的註解收斂成結論：採用 automated，人工閘只留 GitHub Environment。roadmap Phase 5.5 記載的驗證方式是 <code>kubectl apply -f argocd/</code> 之後，UI 上兩個 Application 從 Missing → Progressing → Healthy / Synced。</p>
+<p>roadmap 第 5 節「要注意的坑」：本機 cluster 收不到 webhook，只能靠預設約 3 分鐘的 polling；<code>argocd-cm</code> 的 <code>timeout.reconciliation</code> 可以調短，但太短會打爆 GitHub API rate limit。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>private repo 時要先建 ghcr-pull secret 再建 Application。順序反了 Pod 卡 ImagePullBackOff，UI 顯示 Progressing，容易誤以為 image 沒 build 成功。</li><li>prune 開著：從 base/kustomization.yaml 拿掉一行，下一輪 cluster 上那個物件就被刪除。Service 改名等於刪掉再建。</li><li>Synced 不等於 Healthy，Healthy 也不等於跑最新版。三件事要分開確認。</li></ul></div>
+</article>
+
+<article class="kp" id="ops-07">
+  <div class="kp-head"><span class="id">OPS-07</span><span class="where">Argo CD UI › Applications › notes-staging（示意，依 manifest 重畫）</span></div>
+  <h2>Argo CD UI 的 resource tree：每個節點是誰建的</h2>
+  <p class="tldr">Git 裡只有 5 個物件：2 個 Deployment、2 個 Service、1 個 Ingress。樹上的 ReplicaSet、Pod、Endpoints 是 k8s controller 依這 5 個物件建出來的，Argo CD 依 ownerReferences 把它們掛上樹。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>以下依 manifest 重畫，不是實機截圖。Application 底下第一層是 <code>kustomize build</code> 產出的 5 個物件。這一層是 Argo CD 直接 apply、也拿來跟 Git 比對 Sync status 的東西。</p>
+<p>第二層以下不是 Argo CD apply 的。Deployment controller 看到 <code>notes-web</code> 的 spec，建立名字帶 pod-template-hash 的 ReplicaSet；ReplicaSet controller 再依 <code>replicas: 1</code> 建 Pod。Pod 通過 readinessProbe 後，它的 IP 會被寫進同名 Service 的 Endpoints / EndpointSlice。Argo CD 讀這些物件的 <code>ownerReferences</code>，把它們畫在所屬物件底下，狀態算進 Health，但不參與 Sync 比對。</p>
+<p>換版時會看到兩個 ReplicaSet。image tag 改了，pod template 的 hash 跟著變，Deployment 建一個新的 ReplicaSet 擴到 1，再把舊的縮到 0。舊的不會刪，留給 <code>kubectl rollout undo</code> 用（預設保留 10 個）。GitOps 裡 rollback 走 Git，不用它。</p>
+<p>Ingress 底下沒有子節點。它跟 Service 的關係是 <code>backend.service.name</code> 這個字串，不是 ownerReference。Deployment 與 Service 之間也一樣，只靠 label selector 對上，樹上不會把 Pod 畫在 Service 底下。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="ARGO NS_S WEB_S API_S TRA"></div><figcaption>位置：Argo CD、namespace notes-staging、notes-staging › notes-web、notes-staging › notes-api、Traefik（k3s 內建 Ingress controller）</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>ownerReferences</dt><dd>子物件記錄「誰建了我」的欄位。Argo CD 用它長出樹的第二層以下。</dd></div><div><dt>ReplicaSet</dt><dd>Deployment 為每個 pod template 版本建的物件，負責維持 Pod 數量。</dd></div><div><dt>pod-template-hash</dt><dd>依 pod template 算出的 hash，出現在 ReplicaSet 與 Pod 名稱裡；image 一變就變。</dd></div><div><dt>Endpoints / EndpointSlice</dt><dd>Service 目前選到、且 Ready 的 Pod IP 清單。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">resource tree（示意） · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="flowx"><script type="application/json">{"nodes":[{"id":"app","c":0,"r":2,"l":["Application","notes-staging"]},{"id":"dw","c":1,"r":0,"l":["Deployment","notes-web"]},{"id":"rw","c":2,"r":0,"l":["ReplicaSet","notes-web-（hash）"]},{"id":"pw","c":3,"r":0,"l":["Pod","web · nginx :80"]},{"id":"da","c":1,"r":1,"l":["Deployment","notes-api"]},{"id":"ra","c":2,"r":1,"l":["ReplicaSet","notes-api-（hash）"]},{"id":"pa","c":3,"r":1,"l":["Pod","api · Express :3000"]},{"id":"sw","c":1,"r":2,"l":["Service","notes-web :80"]},{"id":"ew","c":2,"r":2,"l":["Endpoints","web Pod IP:80"]},{"id":"sa","c":1,"r":3,"l":["Service","notes-api :3000"]},{"id":"ea","c":2,"r":3,"l":["Endpoints","api Pod IP:3000"]},{"id":"ing","c":1,"r":4,"l":["Ingress","notes · notes-staging.local"]}],"edges":[{"id":"a1","from":"app","to":"dw"},{"id":"a2","from":"app","to":"da"},{"id":"a3","from":"app","to":"sw"},{"id":"a4","from":"app","to":"sa"},{"id":"a5","from":"app","to":"ing"},{"id":"o1","from":"dw","to":"rw"},{"id":"o2","from":"rw","to":"pw"},{"id":"o3","from":"da","to":"ra"},{"id":"o4","from":"ra","to":"pa"},{"id":"o5","from":"sw","to":"ew","dashed":true},{"id":"o6","from":"sa","to":"ea","dashed":true}],"steps":[{"n":["app"],"e":[],"t":"Application 讀 overlays/staging，kustomize build 產出 5 個物件"},{"n":["dw","da","sw","sa","ing"],"e":["a1","a2","a3","a4","a5"],"t":"第一層是 Git 裡的 5 個物件，Sync status 只比對這一層"},{"n":["rw","ra"],"e":["o1","o3"],"t":"Deployment controller 依 pod template 建 ReplicaSet，名字帶 hash"},{"n":["pw","pa"],"e":["o2","o4"],"t":"ReplicaSet 依 replicas: 1 建 Pod；readinessProbe 通過才算 Ready"},{"n":["ew","ea"],"e":["o5","o6"],"t":"Endpoints 列出 selector 對上且 Ready 的 Pod IP"},{"n":["ing"],"e":["a5"],"t":"Ingress 沒有子節點：它用 Service 名稱字串指過去，不是 owner 關係"},{"n":["dw","rw","pw"],"e":["o1","o2"],"t":"換版時 notes-web 底下會同時有新、舊兩個 ReplicaSet，舊的縮到 0"}]}</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0 1" tabindex="0">
+          <div class="snip-file">notes-deploy/base/kustomization.yaml</div>
+          <pre><code><span>resources:</span>
+<span class="hl">  - web-deployment.yaml</span>
+<span class="hl">  - web-service.yaml</span>
+<span class="hl">  - api-deployment.yaml</span>
+<span class="hl">  - api-service.yaml</span>
+<span class="hl">  - ingress.yaml</span></code></pre>
+          <p class="snip-why">樹的第一層就是這 5 行。</p>
+        </div>
+        <div class="snip" data-steps="2 3 6" tabindex="0">
+          <div class="snip-file">notes-deploy/base/web-deployment.yaml</div>
+          <pre><code><span>apiVersion: apps/v1</span>
+<span>kind: Deployment</span>
+<span>metadata:</span>
+<span>  name: notes-web</span>
+<span>spec:</span>
+<span class="hl">  replicas: 1</span>
+<span>  selector:</span>
+<span>    matchLabels:</span>
+<span>      app: notes</span>
+<span>      component: web        # Phase 9 加 api 之後靠這個欄位區分</span>
+<span class="hl">  template:</span>
+<span>    metadata:</span>
+<span>      labels:</span>
+<span>        app: notes</span>
+<span>        component: web</span></code></pre>
+          <p class="snip-why">replicas 決定 Pod 數；template 裡的 labels 同時被 selector 與 Service 用到。</p>
+        </div>
+        <div class="snip" data-steps="4" tabindex="0">
+          <div class="snip-file">notes-deploy/base/api-service.yaml</div>
+          <pre><code><span>apiVersion: v1</span>
+<span>kind: Service</span>
+<span>metadata:</span>
+<span>  name: notes-api</span>
+<span>spec:</span>
+<span class="hl">  selector:</span>
+<span class="hl">    app: notes</span>
+<span class="hl">    component: api        # 少了這行就會連 web 的 pod 一起選到，流量隨機打錯地方</span>
+<span>  ports:</span>
+<span>    - port: 3000</span>
+<span>      targetPort: 3000</span></code></pre>
+          <p class="snip-why">Endpoints 的內容由這個 selector 決定。</p>
+        </div>
+        <div class="snip" data-steps="5" tabindex="0">
+          <div class="snip-file">notes-deploy/base/ingress.yaml</div>
+          <pre><code><span>          - path: /api</span>
+<span>            pathType: Prefix</span>
+<span>            backend:</span>
+<span>              service:</span>
+<span class="hl">                name: notes-api</span>
+<span>                port:</span>
+<span>                  number: 3000</span>
+<span>          - path: /</span>
+<span>            pathType: Prefix</span>
+<span>            backend:</span>
+<span>              service:</span>
+<span class="hl">                name: notes-web</span>
+<span>                port:</span>
+<span>                  number: 80</span></code></pre>
+          <p class="snip-why">Ingress 只寫 Service 名稱，兩者沒有 owner 關係。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">kubectl -n notes-staging get deploy,rs,pods,endpoints</span>
+<span class="cm"># 示意輸出（依 manifest 推得；hash 與 IP 為假值）</span>
+NAME                        READY   UP-TO-DATE   AVAILABLE
+deployment.apps/notes-api   1/1     1            1
+deployment.apps/notes-web   1/1     1            1
+
+NAME                                  DESIRED   CURRENT   READY
+replicaset.apps/notes-api-7c9d8f6b5   1         1         1
+replicaset.apps/notes-api-5b4c7d9f8   0         0         0
+replicaset.apps/notes-web-6f7b9c4d2   1         1         1
+replicaset.apps/notes-web-84d6c5b7f   0         0         0
+
+NAME                             READY   STATUS
+pod/notes-api-7c9d8f6b5-x2k9q    1/1     Running
+pod/notes-web-6f7b9c4d2-p8m4z    1/1     Running
+
+NAME                  ENDPOINTS
+endpoints/notes-api   10.42.0.31:3000
+endpoints/notes-web   10.42.0.30:80</pre><p>對照 UI 的樹。DESIRED 0 的 ReplicaSet 是換版前那一個。endpoints 空的代表 selector 沒對上或 Pod 還沒 Ready。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p>這一頁的樹沒有實機截圖，是依 <code>base/</code> 的 5 份 manifest 與 k8s controller 的行為推得。</p>
+<p>對照實際事件（<code>docs/use-cases.md</code> UC-17）：Phase 9 上線那天 <code>notes-api</code> 的 Pod 卡在 <code>ImagePullBackOff</code>，web 正常。反映在樹上（示意）就是 notes-api 那條 Deployment → ReplicaSet → Pod 停在 Progressing，notes-web 那條是 Healthy，而 Application 整體的 Sync 仍是 Synced。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>Service 的 selector 少了 component，Endpoints 會同時列出 web 與 api 的 Pod IP，/api 的請求有一部分打到 nginx 回 404，而樹上全綠。</li><li>Endpoints 空的但 Pod 是 Running：先看 readinessProbe 有沒有過，再比對 selector 與 Pod labels。</li></ul></div>
+</article>
+
+<article class="kp" id="ops-08">
+  <div class="kp-head"><span class="id">OPS-08</span><span class="where">notes-deploy › git revert · Argo CD › status.sync.revision</span></div>
+  <h2>Rollback = revert bump commit；Synced 不代表是最新 commit</h2>
+  <p class="tldr">退版就是在 notes-deploy revert 那個 bump commit，Argo CD 下一輪把舊 tag 套回去。判斷 Argo CD 有沒有看到最新 commit，要看 revision，不要看 Synced 兩個字。</p>
+  <div class="kp-grid">
+    <div class="kp-body"><p>cluster 的 desired state 就是 <code>notes-deploy</code> 的內容，所以退版是 Git 操作：找到那筆 <code>chore(deploy): bump production image to sha-…</code>，<code>git revert</code> 再 push。revert commit 把 overlay 的兩個 <code>newTag</code> 改回前一個值，web 與 api 一起回到同一版。<code>notes-deploy</code> 不設保護，不用開 PR 等 check。</p>
+<p>用目前的歷史舉例：production 最近三筆 bump 是 <code>d373a42</code>（sha-3f51150…）、<code>efd8792</code>（sha-1044bc4…）、<code>02a6026</code>（sha-91b7f11…）。revert <code>02a6026</code> 會回到 sha-1044bc4…。直接 revert 中間的 <code>efd8792</code> 會衝突，因為同兩行後來又被改過；要退兩版得從最新的開始依序 revert。</p>
+<p>revert 只改 cluster，不改程式碼。下一次 promote 到 main 並 Approve，<code>bump-production</code> 會照常寫入新 tag，把 rollback 蓋掉；程式碼要另外走 hotfix。有人事後手動 <code>kubectl set image</code> 改回新版，selfHeal 也會在下一輪壓回 Git 的值。</p>
+<p>Synced 的意思是「cluster 等於 Argo CD 目前知道的那個 commit」，不是「等於 GitHub 上最新的 commit」。polling 間隔內，UI 會是綠的 Synced，但 <code>status.sync.revision</code> 還停在舊 commit。要它立刻重讀，對 Application 加 <code>argocd.argoproj.io/refresh=hard</code> annotation，repo-server 會丟掉快取重新 fetch。</p></div>
+    <figure class="mini"><div class="mini-slot" data-ids="DEPLOY ARGO NS_P GHCR"></div><figcaption>位置：liaooliver/notes-deploy、Argo CD、namespace notes-production、GHCR：ghcr.io/liaooliver/notes、notes-api</figcaption></figure>
+  </div>
+  <dl class="terms"><div><dt>git revert</dt><dd>產生一個新 commit，內容是指定 commit 的反向變更。歷史不改寫。</dd></div><div><dt>status.sync.revision</dt><dd>Argo CD 目前認定的 Git commit。Synced 是相對於它，不是相對於 GitHub。</dd></div><div><dt>refresh=hard</dt><dd>annotation；Argo CD 看到後丟掉 manifest 快取，立刻重新 fetch 與比對。</dd></div></dl>
+  <div class="diagram"><div class="diagram-label">時序圖 · 右側程式碼會跟著步驟點亮，點程式碼也能跳到對應步驟</div>
+<div class="viz-row"><div class="seq"><script type="text/plain">
+sequenceDiagram
+    participant D as Developer
+    participant C as notes-deploy main
+    participant R as Argo CD
+    participant K as k3s（notes-production）
+    participant H as GHCR
+    D->>C: git revert 02a6026，git push（不用 PR）
+    Note over C: 兩個 newTag 回到 sha-1044bc4…
+    D->>R: UI 顯示 Synced，以為已經退完
+    D->>R: 讀 .status.sync.revision
+    R-->>D: 還是 02a6026：Argo CD 還沒看到 revert
+    D->>R: annotate argocd.argoproj.io/refresh=hard
+    R->>C: 丟掉快取，重新 git fetch
+    C-->>R: revert commit，比對結果 OutOfSync
+    R->>K: apply：兩個 Deployment 的 image 改回舊 tag
+    K->>H: pull notes / notes-api :sha-1044bc4…
+    K->>K: rolling update 回舊 Pod
+    K-->>R: Synced + Healthy，revision = revert commit
+</script></div>
+      <aside class="code-panel" aria-label="對照程式碼"><div class="snip-head">對照程式碼</div>
+        <div class="snip" data-steps="0" tabindex="0">
+          <div class="snip-file">notes-deploy/README.md</div>
+          <pre><code><span>## Rollback</span>
+<span></span>
+<span>```bash</span>
+<span class="hl">git revert &lt;那個 bump commit&gt;</span>
+<span class="hl">git push</span>
+<span>```</span>
+<span></span>
+<span>這個 repo 不設保護，不必開 PR。Argo CD 偵測到 image tag 變回舊值就會自動 rolling update 回去。</span></code></pre>
+          <p class="snip-why">rollback 的完整操作只有兩行，不需要 PR。</p>
+        </div>
+        <div class="snip" data-steps="0 1" tabindex="0">
+          <div class="snip-file">notes-deploy › git show 02a6026</div>
+          <pre><code><span>    chore(deploy): bump production image to sha-91b7f1149b02d469b145af0245da53311d7d8ae5</span>
+<span></span>
+<span> images:</span>
+<span> - name: ghcr.io/liaooliver/notes</span>
+<span>   newName: ghcr.io/liaooliver/notes</span>
+<span class="hl">-  newTag: sha-1044bc4586f52ddbadcb53b86e9c88a94b5281a1</span>
+<span class="hl">+  newTag: sha-91b7f1149b02d469b145af0245da53311d7d8ae5</span>
+<span> - name: ghcr.io/liaooliver/notes-api</span>
+<span>   newName: ghcr.io/liaooliver/notes-api</span>
+<span class="hl">-  newTag: sha-1044bc4586f52ddbadcb53b86e9c88a94b5281a1</span>
+<span class="hl">+  newTag: sha-91b7f1149b02d469b145af0245da53311d7d8ae5</span></code></pre>
+          <p class="snip-why">要 revert 的就是這個 diff：一次改兩個 image 的 tag。</p>
+        </div>
+        <div class="snip" data-steps="3 4 5 6" tabindex="0">
+          <div class="snip-file">docs/use-cases.md › UC-16</div>
+          <pre><code><span class="hl">kubectl -n argocd get app notes-staging \</span>
+<span class="hl">  -o jsonpath='{.status.sync.status} {.status.sync.revision}'</span>
+<span>```</span>
+<span></span>
+<span>印出來的 SHA 跟 Config repo `git log` 的第一筆對不上，就代表 Argo CD 還沒讀到。</span>
+<span></span>
+<span>**逼它立刻重讀**：</span>
+<span></span>
+<span>```bash</span>
+<span class="hl">kubectl -n argocd annotate app notes-staging \</span>
+<span class="hl">  argocd.argoproj.io/refresh=hard --overwrite</span></code></pre>
+          <p class="snip-why">看 revision 與強制重讀的兩個指令。</p>
+        </div>
+        <div class="snip" data-steps="7 8" tabindex="0">
+          <div class="snip-file">notes-deploy/argocd/notes-production.yaml</div>
+          <pre><code><span>    automated:</span>
+<span class="hl">      prune: true      # Git 裡刪掉的資源，cluster 也跟著刪</span>
+<span class="hl">      selfHeal: true   # 有人手動 kubectl edit 改壞了，Argo CD 自動改回 Git 的版本</span></code></pre>
+          <p class="snip-why">automated 讓 revert commit 一被讀到就套用；selfHeal 保證手動改回也會被壓回。</p>
+        </div>
+      </aside></div></div>
+  <div class="cmds"><div class="cmds-label">指令</div><div class="term"><pre><span class="cmd">git -C notes-deploy log --oneline -- overlays/production</span>
+02a6026 chore(deploy): bump production image to sha-91b7f1149b02d469b145af0245da53311d7d8ae5
+efd8792 chore(deploy): bump production image to sha-1044bc4586f52ddbadcb53b86e9c88a94b5281a1
+d373a42 chore(deploy): bump production image to sha-3f51150d82c36e8c834ef3f5b9770ad6d58b1b4f
+6c87329 chore: bootstrap GitOps manifests for liaooliver/notes</pre><p>production 的完整部署歷史。要退版時從這裡挑 commit，第一筆就是現在跑的版本。</p></div><div class="term"><pre><span class="cmd">git revert --no-edit efd8792    # 在 02a6026 之上，跳過最新那筆</span>
+<span class="cm"># 在暫存 clone 實測（未 push）</span>
+Auto-merging overlays/production/kustomization.yaml
+CONFLICT (content): Merge conflict in overlays/production/kustomization.yaml
+error: could not revert efd8792... chore(deploy): bump production image to sha-1044bc4586f52ddbadcb53b86e9c88a94b5281a1</pre><p>中間那筆的兩行已被 02a6026 改過，會衝突。要退兩版就先 revert 02a6026，再 revert efd8792。</p></div><div class="term"><pre><span class="cmd">kubectl -n argocd annotate app notes-production argocd.argoproj.io/refresh=hard --overwrite</span>
+<span class="cm"># 示意輸出（依 manifest 推得）</span>
+application.argoproj.io/notes-production annotated</pre><p>等不了 polling，或懷疑 Argo CD 的認知落後時用。之後再讀一次 .status.sync.revision 確認前進了。</p></div></div>
+  <div class="evidence"><b>實際發生過</b><p><b>Phase 9 上線（UC-16、UC-17）</b>：新增 notes-api 的結構 commit <code>4b60f81</code>（2026-09-25 15:21 UTC）先被 Argo CD 讀到，而 CI 第一個替 notes-api 寫 tag 的 bump <code>377d045</code> 在 15:42 UTC 才出現。中間這段 overlay 沒有 notes-api 的 <code>images</code> 條目，image 沒有 tag，Pod 卡在 <code>ImagePullBackOff</code>。<code>kubectl rollout restart</code> 沒用，因為 spec 沒變；讓 Argo CD 讀到 bump commit 之後才恢復。<code>4b60f81</code> 的 commit message 事前就寫了這個順序要求。</p>
+<p><b>Mac 睡眠造成的假警報</b>（roadmap 第 5 節）：production Pod 跑 <code>sha-1044bc45</code>、AGE 顯示 18h，但把 tag 換成它的 <code>efd8792</code> 是 15 分鐘前（2026-09-26 12:01 UTC）才推的，看起來像 cluster 比 Git 還新。VM 的 journal 在 2026-09-25T17:57:36Z 到 2026-09-26T12:04:09Z 之間一行都沒有：VM 被暫停，時鐘停住，對時後 Pod 的建立時間被蓋上舊時間戳。Git 與 cluster 其實一致。</p>
+<p>截至 2026-09-27，<code>notes-deploy</code> 的歷史裡還沒有真的 revert commit。上面的 revert 流程是依 README 與 UC-19，用暫存 clone 驗證過 <code>git revert 02a6026</code> 會把兩個 tag 改回 <code>sha-1044bc4…</code>。</p></div>
+  <div class="pitfalls"><b>坑</b><ul><li>kubectl rollout restart 修不了 ImagePullBackOff：spec 沒變，重建幾次都拉同一個不存在的 image。要改的是 Git，或 Argo CD 的認知。</li><li>新增 Deployment 的結構 commit，要等 CI 的 bump 先把 tag 寫進 overlay 再 push；順序反了 image 沒有 tag。</li><li>Mac 睡醒後 VM 時鐘會往前跳，Pod AGE 多出睡眠時數。先查 journalctl 有沒有斷點，再懷疑有人繞過 Git。</li><li>revert 只退 cluster。下一次 promote 並 Approve 會照常寫入新 tag，程式碼的修正要另外走 hotfix。</li></ul></div>
+</article>
+    <nav class="pager" aria-label="上一頁與下一頁">
+      <a href="ci.html"><small>上一層</small><span>CI 與發版</span></a>
+      <a class="next" href="k8s.html"><small>下一層</small><span>k8s runtime</span></a>
+    </nav>
+  </main>
+</div>
+<script type="application/json" id="arch-data">{"size":{"w":1360,"h":660},"clusters":[{"id":"LOCAL","x":10,"y":118,"w":150,"h":90,"label":"本機 Mac"},{"id":"GHC","x":180,"y":118,"w":150,"h":90,"label":"github.com"},{"id":"ACTIONS","x":366,"y":20,"w":808,"h":290,"label":"GitHub Actions · notes","right":true},{"id":"DEPLOYC","x":366,"y":356,"w":318,"h":84,"label":"notes-deploy repo"},{"id":"K3S","x":186,"y":440,"w":870,"h":210,"label":"k3s · Multipass VM","right":true,"bottom":true},{"id":"NS_S","x":385,"y":452,"w":290,"h":82,"label":"ns notes-staging"},{"id":"NS_P","x":725,"y":452,"w":290,"h":82,"label":"ns notes-production"}],"nodes":[{"id":"DEV","x":20,"y":140,"l":["開發者","git · husky"]},{"id":"GH","x":190,"y":140,"l":["notes repo","branch protection"]},{"id":"CL","x":380,"y":50,"l":["commitlint.yml","訊息規範"]},{"id":"LLM","x":540,"y":50,"l":["llm-pr-assist.yml","PR 留言"]},{"id":"GEM","x":1210,"y":50,"l":["Gemini API","generateContent"]},{"id":"BUILD","x":380,"y":140,"l":["build","test · build"]},{"id":"WB","x":540,"y":140,"l":["white-box","Semgrep · Trivy fs"]},{"id":"DOCKER","x":700,"y":140,"l":["docker ×2","buildx · Trivy image"]},{"id":"GHCR","x":1210,"y":140,"l":["GHCR","notes · notes-api"]},{"id":"BS","x":540,"y":240,"l":["bump-staging","自動"]},{"id":"ENV","x":700,"y":232,"w":130,"h":62,"shape":"diamond","l":["production","人工 Approve"]},{"id":"BP","x":870,"y":240,"l":["bump-production","Approve 之後"]},{"id":"REL","x":1030,"y":240,"l":["release","semantic-release"]},{"id":"MC","x":380,"y":380,"l":["manifest-check","kustomize build"]},{"id":"DEPLOY","x":540,"y":380,"l":["notes-deploy","base · overlays"]},{"id":"ARGO","x":200,"y":478,"l":["Argo CD","Application ×2"]},{"id":"WEB_S","x":395,"y":478,"l":["notes-web","nginx + Vue"]},{"id":"API_S","x":535,"y":478,"l":["notes-api","Express :3000"]},{"id":"WEB_P","x":735,"y":478,"l":["notes-web","nginx + Vue"]},{"id":"API_P","x":875,"y":478,"l":["notes-api","Express :3000"]},{"id":"TRA","x":700,"y":590,"l":["Traefik","Ingress 分流"]},{"id":"BROWSER","x":1210,"y":590,"l":["瀏覽器","notes.local"]}],"edges":[{"id":"e_dev_gh","pts":[[150,163],[190,163]],"label":"push","lx":170,"ly":155},{"id":"e_gh_cl","pts":[[255,140],[255,73],[380,73]],"label":"PR / push","lx":318,"ly":67},{"id":"e_gh_llm","pts":[[285,140],[285,34],[605,34],[605,50]],"label":"PR","lx":440,"ly":30},{"id":"e_llm_gem","pts":[[670,73],[1210,73]],"label":"prompt → 建議文字","lx":940,"ly":67},{"id":"e_gh_build","pts":[[320,163],[380,163]]},{"id":"e_build_wb","pts":[[510,163],[540,163]]},{"id":"e_wb_docker","pts":[[670,163],[700,163]]},{"id":"e_docker_ghcr","pts":[[830,163],[1210,163]],"label":"push :sha-\u003ccommit>","lx":1020,"ly":155},{"id":"e_docker_bs","pts":[[740,186],[740,212],[605,212],[605,240]],"label":"staging","lx":672,"ly":207},{"id":"e_docker_env","pts":[[765,186],[765,232]],"label":"main","lx":771,"ly":214,"anchor":"start"},{"id":"e_env_bp","pts":[[830,263],[870,263]]},{"id":"e_bp_rel","pts":[[1000,263],[1030,263]]},{"id":"e_rel_gh","pts":[[1095,286],[1095,322],[230,322],[230,186]],"dashed":true,"label":"tag + GitHub Release","lx":1010,"ly":316},{"id":"e_bs_deploy","pts":[[605,286],[605,380]],"label":"deploy key","lx":611,"ly":342,"anchor":"start"},{"id":"e_bp_deploy","pts":[[935,286],[935,348],[645,348],[645,380]],"label":"deploy key","lx":800,"ly":342},{"id":"e_deploy_mc","pts":[[540,403],[510,403]]},{"id":"e_deploy_argo","pts":[[560,426],[560,446],[265,446],[265,478]],"dashed":true,"label":"polling","lx":330,"ly":441},{"id":"e_argo_s","pts":[[330,501],[385,501]],"label":"sync","lx":357,"ly":494},{"id":"e_argo_p","pts":[[265,524],[265,562],[990,562],[990,534]],"label":"sync","lx":900,"ly":557},{"id":"e_ghcr_pull","pts":[[1275,186],[1275,493],[1056,493]],"dashed":true,"label":"image pull","lx":1165,"ly":487},{"id":"e_br_tra","pts":[[1210,613],[830,613]],"label":"Host: notes.local","lx":1020,"ly":606},{"id":"e_tra_s","pts":[[700,613],[530,613],[530,534]],"label":"notes-staging.local","lx":615,"ly":606},{"id":"e_tra_p","pts":[[790,590],[790,534]],"label":"notes.local","lx":796,"ly":580,"anchor":"start"}],"scenarios":[{"id":"s1","label":"開 PR 到 staging","steps":[{"n":["DEV","GH"],"e":["e_dev_gh"],"t":"開發者 push feature/* 分支，在 GitHub 開 PR，base 選 staging"},{"n":["CL"],"e":["e_gh_cl"],"t":"commitlint.yml：逐一檢查 PR 裡每個 commit 的訊息格式"},{"n":["LLM","GEM"],"e":["e_gh_llm","e_llm_gem"],"t":"llm-pr-assist.yml：三個 job 平行呼叫 Gemini，結果貼成 PR 留言（不是 required）"},{"n":["BUILD"],"e":["e_gh_build"],"t":"ci.yml build：npm ci → npm test → npm run build，上傳 dist"},{"n":["WB"],"e":["e_build_wb"],"t":"white-box：Semgrep + Trivy fs，CRITICAL/HIGH 直接讓 job 失敗"},{"n":["GH"],"e":[],"t":"三個 required checks 綠燈，Merge 按鈕才可用；PR 事件不會 build image、不會部署"}]},{"id":"s2","label":"merge 進 staging → k3s 換版","steps":[{"n":["GH"],"e":[],"t":"merge 之後 GitHub 發出 push staging 事件，ci.yml 在合併後的程式碼上重跑"},{"n":["BUILD","WB"],"e":["e_gh_build","e_build_wb"],"t":"build + white-box 再跑一次：image 必須從合併後的程式碼產生"},{"n":["DOCKER"],"e":["e_wb_docker"],"t":"docker matrix：web 與 api 兩個分身各自 buildx，產出 amd64 + arm64"},{"n":["GHCR"],"e":["e_docker_ghcr"],"t":"push ghcr.io/liaooliver/notes:sha-\u003c40 碼>，接著用 Trivy 掃剛推上去的 image"},{"n":["BS"],"e":["e_docker_bs"],"t":"bump-staging：確認 staging 沒前進，kustomize edit set image 改 overlays/staging"},{"n":["DEPLOY","MC"],"e":["e_bs_deploy","e_deploy_mc"],"t":"用 deploy key push 進 notes-deploy main；那邊的 manifest-check 驗一次 kustomize build"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 輪詢到 notes-deploy 的新 commit，notes-staging 變成 OutOfSync"},{"n":["ARGO","NS_S","WEB_S","API_S"],"e":["e_argo_s"],"t":"automated sync：apply 新的 Deployment，controller 開始 rolling update"},{"n":["GHCR","K3S"],"e":["e_ghcr_pull"],"t":"kubelet 依 image tag 從 GHCR 拉 arm64 那一層；新 Pod 通過 readinessProbe 才接流量"},{"n":["BROWSER","TRA","NS_S"],"e":["e_br_tra","e_tra_s"],"t":"瀏覽器打 notes-staging.local，Traefik 依 Host 與路徑分流到 staging 的 Service"}]},{"id":"s3","label":"staging → main + Approve","steps":[{"n":["GH"],"e":[],"t":"開 PR staging → main，跑一樣的 PR 檢查；用 merge commit 合併，發出 push main"},{"n":["BUILD","WB"],"e":["e_gh_build","e_build_wb"],"t":"build + white-box 在 main 的 commit 上再跑一次"},{"n":["DOCKER","GHCR"],"e":["e_wb_docker","e_docker_ghcr"],"t":"依 main 的 commit SHA 重新 build、push 一組 image"},{"n":["ENV"],"e":["e_docker_env"],"t":"bump-production 綁了 environment: production，run 停在 Waiting"},{"n":["ENV"],"e":[],"t":"Reviewer 在 run 頁面按 Review deployments → Approve and deploy"},{"n":["BP"],"e":["e_env_bp"],"t":"bump-production：再確認 main 沒前進，改 overlays/production 的 image tag"},{"n":["DEPLOY"],"e":["e_bp_deploy"],"t":"用 deploy key push 進 notes-deploy main"},{"n":["REL","GH"],"e":["e_bp_rel","e_rel_gh"],"t":"release：semantic-release 分析 commit、算版號、打 tag、開 GitHub Release"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 輪詢到 overlays/production 變了，notes-production 變成 OutOfSync"},{"n":["ARGO","NS_P","WEB_P","API_P"],"e":["e_argo_p"],"t":"automated sync → rolling update；人工閘只有上游那一道 Approve"},{"n":["BROWSER","TRA","NS_P"],"e":["e_br_tra","e_tra_p"],"t":"瀏覽器打 notes.local，流量進到 production"}]},{"id":"s4","label":"production 回滾","steps":[{"n":["DEV","DEPLOY"],"e":[],"t":"在 notes-deploy git revert 那個 bump commit 並 push（這個 repo 不設保護，不用 PR）"},{"n":["MC"],"e":["e_deploy_mc"],"t":"manifest-check 驗 kustomize build 還算得出來"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 發現 image tag 變回舊值，notes-production 變成 OutOfSync"},{"n":["ARGO","NS_P","WEB_P","API_P"],"e":["e_argo_p"],"t":"sync 後 rolling update 回舊版；舊 image 還在 GHCR，不用重新 build"},{"n":["NS_P"],"e":[],"t":"直接 kubectl rollout undo 沒用：selfHeal 會把 cluster 改回 Git 裡寫的版本"}]}],"names":{"DEV":"開發者本機（git、husky commit-msg hook）","GH":"GitHub：liaooliver/notes（PR、branch protection）","ACTIONS":"GitHub Actions","CL":"commitlint.yml","LLM":"llm-pr-assist.yml","GEM":"Gemini API","BUILD":"ci.yml › build","WB":"ci.yml › white-box","DOCKER":"ci.yml › docker（matrix web / api）","GHCR":"GHCR：ghcr.io/liaooliver/notes、notes-api","BS":"ci.yml › bump-staging","ENV":"GitHub Environment：production","BP":"ci.yml › bump-production","REL":"ci.yml › release","MC":"notes-deploy › manifest-check.yml","DEPLOY":"liaooliver/notes-deploy","DEPLOYC":"liaooliver/notes-deploy","K3S":"k3s cluster（Multipass VM）","ARGO":"Argo CD","NS_S":"namespace notes-staging","NS_P":"namespace notes-production","WEB_S":"notes-staging › notes-web","API_S":"notes-staging › notes-api","WEB_P":"notes-production › notes-web","API_P":"notes-production › notes-api","TRA":"Traefik（k3s 內建 Ingress controller）","BROWSER":"Mac 上的瀏覽器","LOCAL":"開發者本機","GHC":"github.com"}}</script>
+<script src="seqviz.js"></script>
+<script src="archviz.js"></script>
+<script>
+(function () {
+  var A = JSON.parse(document.getElementById('arch-data').textContent);
+  SeqViz.mountAll('.seq');
+  document.querySelectorAll('.flowx').forEach(ArchViz.mountFlow);
+  document.querySelectorAll('.mini-slot').forEach(function (m) {
+    var ids = m.dataset.ids.split(' ');
+    ArchViz.mountMini(m, A, ids, 'index.html#node-' + ids[0]);
+  });
+  document.querySelectorAll('.viz-row').forEach(function (row) {
+    var viz = row.querySelector('.seq, .flowx'), panel = row.querySelector('.code-panel');
+    if (!viz || !panel) return;
+    var snips = Array.prototype.slice.call(panel.querySelectorAll('.snip'));
+    snips.forEach(function (s) { s.steps = s.dataset.steps.split(' ').map(Number); });
+    viz.addEventListener('seqstep', function (e) {
+      var k = e.detail.step, first = null;
+      snips.forEach(function (s) {
+        var hit = k >= 0 && s.steps.indexOf(k) !== -1;
+        s.classList.toggle('cur', hit);
+        s.classList.toggle('dim', k >= 0 && !hit);
+        if (hit && !first) first = s;
+      });
+      if (first) {
+        var top = first.offsetTop - panel.offsetTop - 8;
+        if (top < panel.scrollTop || top + first.offsetHeight > panel.scrollTop + panel.clientHeight) panel.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+    });
+    snips.forEach(function (s) {
+      var jump = function () { if (viz.seqviz) { viz.seqviz.stop(); viz.seqviz.set(s.steps[0]); } };
+      s.addEventListener('click', jump);
+      s.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); } });
+    });
+  });
+  var links = document.querySelectorAll('#nav-list a');
+  if ('IntersectionObserver' in window && links.length) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + en.target.id); });
+      });
+    }, { rootMargin: '-30% 0px -60% 0px' });
+    document.querySelectorAll('.kp').forEach(function (el) { io.observe(el); });
+  }
+})();
+</script>
