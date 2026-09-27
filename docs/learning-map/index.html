@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Notes 架構地圖</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  /* 單一主題：低亮度墨綠底、灰綠字，刻意不做亮色版 */
+  :root {
+    --ground: #33423a;
+    --surface: #3a4a41;
+    --surface-2: #2c3a32;
+    --ink: #e3e7df;
+    --ink-2: #c4ccc1;
+    --ink-3: #97a49a;
+    --line: #52625a;
+    --line-strong: #7b8c82;
+    --accent: #a9c9b4;
+    --pass: #a5cfae;
+    --wait: #d8bb78;
+    --fail: #dc9d8d;
+    --code-bg: #2a3730;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  code, .mono {
+    font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: .88em;
+  }
+  code {
+    background: var(--code-bg);
+    padding: .05em .3em;
+    color: var(--ink);
+  }
+  a { color: var(--ink); text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--ink); }
+  h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.25; font-weight: 600; }
+
+  .topbar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 20;
+    background: var(--ground);
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .topbar-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 10px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 18px;
+  }
+  .brand { font-weight: 600; font-size: 14px; }
+  .brand small { color: var(--ink-3); font-weight: 400; margin-left: 8px; font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 0 4px; margin-left: auto; }
+  .chip {
+    border: 0;
+    background: none;
+    color: var(--ink-3);
+    padding: 2px 8px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 1.6;
+    border-bottom: 2px solid transparent;
+  }
+  .chip:hover { color: var(--ink); }
+  .chip[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .chip:focus-visible, .nav a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 30px 20px 80px;
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 40px;
+  }
+  .nav {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 62px);
+    align-self: start;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+    font-size: 13px;
+    border-right: 1px solid var(--line);
+    padding-right: 14px;
+  }
+  .nav h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-3);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .nav ol { list-style: none; margin: 0 0 18px; padding: 0; }
+  .nav a {
+    display: grid;
+    grid-template-columns: 46px 1fr;
+    gap: 6px;
+    padding: 3px 0 3px 8px;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+  }
+  .nav a .id { color: var(--ink-3); font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .nav a:hover { color: var(--ink); }
+  .nav a.active { border-left-color: var(--ink); color: var(--ink); }
+  .nav li[hidden] { display: none; }
+
+  .main { min-width: 0; }
+  .intro h1 { font-size: 28px; }
+  .intro .lede { color: var(--ink-2); max-width: 62ch; margin: 12px 0 0; }
+  .flow {
+    margin: 24px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .flow .node { border: 1px solid var(--line-strong); padding: 2px 10px; }
+  .flow .node.gate { border-color: var(--ink); border-width: 1.5px; }
+  .flow .arrow { color: var(--ink-3); }
+
+  .legend {
+    margin: 24px 0 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 4px 24px;
+    font-size: 13px;
+  }
+  .legend div { display: flex; gap: 10px; }
+  .legend b { font-weight: 600; min-width: 112px; }
+  .legend span { color: var(--ink-2); }
+
+  .overview { margin-top: 40px; }
+  .overview h2, .cases-heading, .issues h2, .files h2 { font-size: 18px; margin-bottom: 10px; }
+  .table-wrap { overflow-x: auto; border-top: 1px solid var(--line-strong); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 700px; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 500; color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; }
+  tbody tr[hidden] { display: none; }
+  td .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); font-size: 12.5px; }
+  td a { text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+
+  /* 結果標記：一個小方塊 + 文字，不做底色藥丸 */
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+  .pill::before { content: ""; width: 8px; height: 8px; display: inline-block; background: currentColor; }
+  .pill.pass { color: var(--pass); }
+  .pill.wait { color: var(--wait); }
+  .pill.fail { color: var(--fail); }
+  .pill.none { color: var(--ink-3); }
+
+  .cases { margin-top: 40px; }
+  .case {
+    border-top: 1px solid var(--line-strong);
+    padding: 22px 0 34px;
+    scroll-margin-top: 80px;
+  }
+  .case[hidden] { display: none; }
+  .case-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 6px; font-size: 12.5px; }
+  .case-head .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); }
+  .case-head .stage { text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); font-size: 11.5px; }
+  .case-head .pill { margin-left: auto; }
+  .case h2 { font-size: 20px; }
+  .story { margin: 16px 0 0; display: grid; gap: 12px; }
+  .story > div { display: grid; grid-template-columns: 80px 1fr; gap: 12px; }
+  .story dt {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    padding-top: 5px;
+  }
+  .story dd { margin: 0; max-width: 72ch; }
+  .story ol, .story ul { margin: 2px 0 0; padding-left: 20px; }
+  .story li { margin: 2px 0; }
+  .story li ul { padding-left: 18px; }
+  .story dd.result { font-weight: 500; }
+
+  .evidence {
+    margin: 18px 0 0;
+    padding: 10px 0 10px 14px;
+    border-left: 2px solid var(--line-strong);
+    font-size: 14px;
+    max-width: 78ch;
+    color: var(--ink-2);
+  }
+  .evidence b { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 2px; font-weight: 500; }
+
+  .diagram {
+    margin: 22px 0 0;
+    border-top: 1px solid var(--line);
+    overflow-x: auto;
+    padding: 10px 0 0;
+  }
+  .diagram-label {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    padding-bottom: 4px;
+  }
+
+  .issues { margin-top: 40px; border-top: 1px solid var(--line-strong); padding-top: 20px; }
+  .issues ul { margin: 0; padding-left: 20px; max-width: 78ch; color: var(--ink-2); }
+  .issues li { margin: 6px 0; }
+  .files { margin-top: 36px; }
+  .files table { min-width: 520px; }
+  .empty { display: none; color: var(--ink-3); padding: 30px 0; }
+  .empty.show { display: block; }
+
+  @media (max-width: 860px) {
+    .page { grid-template-columns: 1fr; gap: 20px; }
+    .nav { position: static; max-height: none; border-right: 0; padding-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+    .nav ol { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+    .nav a { grid-template-columns: auto; padding: 2px 0; border-left: 0; }
+    .nav a.active { text-decoration: underline; }
+    .nav a .label { display: none; }
+    .story > div { grid-template-columns: 1fr; gap: 2px; }
+    .case-head .pill { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+
+  /* 互動圖表：控制列與 SVG 樣式（seqviz.js / 流程圖共用） */
+  .viz-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0 4px; font-size: 13px; }
+  .viz-ctl button, .viz-scn button {
+    border: 1px solid var(--line-strong); background: none; color: var(--ink);
+    font: inherit; font-size: 12.5px; padding: 2px 10px; cursor: pointer; line-height: 1.6;
+  }
+  .viz-ctl button:hover, .viz-scn button:hover { border-color: var(--ink); }
+  .viz-ctl button:disabled { opacity: .35; cursor: default; }
+  .viz-ctl button:focus-visible, .viz-scn button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .viz-count { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 56px; font-size: 12.5px; }
+  .viz-range { flex: 1 1 160px; min-width: 120px; accent-color: var(--accent); }
+  .viz-caption { font-size: 13.5px; color: var(--ink); min-height: 1.6em; margin: 2px 0 10px; font-weight: 500; max-width: 80ch; }
+  .viz-svg { overflow-x: auto; padding-bottom: 6px; }
+  .viz-scn { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+  .viz-scn button[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .seq:focus-visible, .flow-viz:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+
+  .seq-svg text, .flow-svg text { font-family: "IBM Plex Sans", "Noto Sans TC", "PingFang TC", sans-serif; font-size: 13px; fill: var(--ink-2); }
+  .seq-svg .head rect { fill: var(--surface-2); stroke: var(--line-strong); }
+  .seq-svg .head rect.actor { stroke-dasharray: 3 2; }
+  .seq-svg .head text { fill: var(--ink); font-weight: 500; }
+  .seq-svg .head.cur rect { fill: var(--accent); stroke: var(--accent); }
+  .seq-svg .head.cur text { fill: var(--ground); font-weight: 600; }
+  .seq-svg .life { stroke: var(--line); stroke-dasharray: 4 4; }
+  .seq-svg .life.cur { stroke: var(--accent); stroke-dasharray: none; }
+  .seq-svg .msg-line { stroke: var(--ink-2); stroke-width: 1.2; fill: none; }
+  .seq-svg .msg-line.dashed { stroke-dasharray: 5 4; }
+  .seq-svg .ah { fill: var(--ink-2); }
+  .seq-svg .ah-open, .seq-svg .ah-x { stroke: var(--ink-2); fill: none; stroke-width: 1.2; }
+  .seq-svg .row.cur .msg-line, .seq-svg .row.cur .ah-open, .seq-svg .row.cur .ah-x { stroke: var(--accent); stroke-width: 2; }
+  .seq-svg .row.cur .ah { fill: var(--accent); }
+  .seq-svg .row.cur text { fill: var(--ink); font-weight: 600; }
+  .seq-svg .row.future { opacity: .14; }
+  .seq-svg .row.done { opacity: .55; }
+  .seq-svg .note-rect { fill: var(--surface); stroke: var(--line-strong); }
+  .seq-svg .row.cur .note-rect { stroke: var(--accent); stroke-width: 1.5; }
+  .seq-svg .note-text { fill: var(--ink-2); }
+  .seq-svg .frame-rect { fill: none; stroke: var(--line-strong); stroke-dasharray: 2 3; }
+  .seq-svg .frame.cur .frame-rect { stroke: var(--accent); stroke-dasharray: none; }
+  .seq-svg .frame-kind { font-size: 11.5px; fill: var(--ink); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .seq-svg .frame-label { font-size: 12px; fill: var(--ink-3); }
+  .seq-svg .sep-line { stroke: var(--line-strong); stroke-dasharray: 4 3; }
+  .seq-svg .row.msg, .seq-svg .row.self, .seq-svg .row.note { cursor: pointer; }
+
+  .flow-svg { display: block; min-width: 900px; width: 100%; height: auto; }
+  .flow-svg .node rect, .flow-svg .node polygon { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1; }
+  .flow-svg .node text { fill: var(--ink); font-size: 12.5px; }
+  .flow-svg .node .sub { fill: var(--ink-3); font-size: 11.5px; }
+  .flow-svg .node.cur rect, .flow-svg .node.cur polygon { fill: var(--accent); stroke: var(--accent); }
+  .flow-svg .node.cur text { fill: var(--ground); font-weight: 600; }
+  .flow-svg .node.done rect, .flow-svg .node.done polygon { stroke: var(--accent); }
+  .flow-svg .node.off { opacity: .28; }
+  .flow-svg .edge path { fill: none; stroke: var(--ink-2); stroke-width: 1.2; }
+  .flow-svg .edge.dashed path { stroke-dasharray: 5 4; }
+  .flow-svg .edge .ah { fill: var(--ink-2); }
+  .flow-svg .edge text { font-size: 11.5px; fill: var(--ink-3); }
+  .flow-svg .edge.cur path { stroke: var(--accent); stroke-width: 2.2; }
+  .flow-svg .edge.cur .ah { fill: var(--accent); }
+  .flow-svg .edge.cur text { fill: var(--ink); font-weight: 600; }
+  .flow-svg .edge.done path { stroke: var(--accent); opacity: .7; }
+  .flow-svg .edge.done .ah { fill: var(--accent); }
+  .flow-svg .edge.off { opacity: .22; }
+  .flow-svg .cluster rect { fill: none; stroke: var(--line); stroke-dasharray: 3 3; }
+  .flow-svg .cluster text { fill: var(--ink-3); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; }
+  @media (prefers-reduced-motion: no-preference) {
+    .seq-svg .row, .seq-svg .head rect, .flow-svg .node, .flow-svg .edge, .flow-svg .node rect, .flow-svg .node polygon { transition: opacity .25s, fill .25s, stroke .25s; }
+  }
+
+  /* 時序圖 + 右側對照程式碼 */
+  .page { max-width: 1360px; grid-template-columns: 190px minmax(0, 1fr); }
+  .viz-row { display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 22px; align-items: start; }
+  .code-panel {
+    position: sticky; top: calc(env(safe-area-inset-top, 0px) + 60px);
+    max-height: calc(100vh - 80px); overflow-y: auto;
+    border-left: 1px solid var(--line); padding-left: 14px; font-size: 12.5px;
+  }
+  .snip-head { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 8px; }
+  .snip { border-left: 2px solid transparent; padding: 6px 0 6px 10px; margin: 0 0 10px -12px; cursor: pointer; transition: opacity .2s, border-color .2s; }
+  .snip:hover { border-left-color: var(--line-strong); }
+  .snip:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .snip.cur { border-left-color: var(--accent); }
+  .snip.dim { opacity: .38; }
+  .snip-file { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--ink-3); margin-bottom: 4px; }
+  .snip.cur .snip-file { color: var(--accent); }
+  .snip pre { margin: 0; padding: 8px 10px; background: var(--code-bg); overflow-x: auto; font-family: "IBM Plex Mono", monospace; font-size: 11.5px; line-height: 1.55; color: var(--ink-2); }
+  .snip pre code { background: none; padding: 0; font-size: inherit; }
+  .snip pre .hl { display: inline-block; width: 100%; color: var(--ink); }
+  .snip.cur pre .hl { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: -10px 0 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+  .snip-why { margin: 6px 0 0; color: var(--ink-2); line-height: 1.55; }
+  .snip.cur .snip-why { color: var(--ink); }
+  @media (max-width: 1100px) {
+    .viz-row { grid-template-columns: 1fr; }
+    .code-panel { position: static; max-height: none; border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 10px; }
+  }
+
+
+
+  /* ---------- 架構學習地圖：在 scenario-atlas 主題上加的部分 ---------- */
+  .tabs { display: flex; flex-wrap: wrap; gap: 0 2px; margin-left: auto; }
+  .tabs a {
+    color: var(--ink-3); text-decoration: none; font-size: 13px; padding: 2px 9px;
+    border-bottom: 2px solid transparent; line-height: 1.6;
+  }
+  .tabs a:hover { color: var(--ink); }
+  .tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .tabs a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .eyebrow { font-size: 11.5px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); margin-bottom: 8px; }
+  .intro-grid { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 28px; align-items: start; }
+
+  /* 總架構圖 */
+  .arch-wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 22px; }
+  .arch-svg { min-width: 1080px; }
+  .flow-svg .lbg { fill: var(--ground); }
+  .flow-svg .edge .lbg { fill: var(--ground); stroke: none; }
+  .arch-svg .cluster[data-id="NS_S"] rect, .arch-svg .cluster[data-id="NS_P"] rect { stroke: var(--line-strong); }
+  .arch-svg .has-kp { cursor: pointer; }
+  .arch-svg .node.has-kp:hover rect, .arch-svg .node.has-kp:hover polygon { stroke: var(--ink); }
+  .arch-svg .cluster.has-kp:hover rect { stroke: var(--ink-2); }
+  .arch-svg .has-kp:focus-visible { outline: 2px solid var(--ink); }
+  .arch-svg .node.sel rect, .arch-svg .node.sel polygon { stroke: var(--wait); stroke-width: 2.5; }
+  .arch-svg .cluster.sel rect { stroke: var(--wait); stroke-width: 2; stroke-dasharray: none; }
+  .flow-svg .cluster.cur rect { stroke: var(--accent); stroke-dasharray: none; stroke-width: 1.6; }
+  .flow-svg .cluster.done rect { stroke: var(--accent); }
+
+  .node-panel { border-top: 1px solid var(--line-strong); padding-top: 12px; font-size: 13.5px; min-height: 180px; }
+  .node-panel .hint { color: var(--ink-3); font-size: 12.5px; margin: 0 0 10px; }
+  .np-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+  .np-id { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--wait); letter-spacing: .06em; }
+  .np-head b { font-weight: 600; font-size: 15px; line-height: 1.4; }
+  .np-empty { color: var(--ink-3); }
+  .np-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 14px 28px; }
+  .np-list a { display: grid; grid-template-columns: 58px 1fr; gap: 0 8px; text-decoration: none; }
+  .np-list a:hover .np-t { text-decoration: underline; }
+  .np-kp { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+  .np-t { font-weight: 500; }
+  .np-pg { grid-column: 2; font-size: 11.5px; color: var(--ink-3); }
+  .np-list p { margin: 3px 0 0 66px; color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
+
+  /* mini-map */
+  .mini { margin: 0; }
+  .mini-link { display: block; border: 1px solid var(--line); padding: 6px; background: var(--surface-2); }
+  .mini-link:hover { border-color: var(--line-strong); }
+  .mini-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .arch-mini { display: block; width: 100%; height: auto; min-width: 0; }
+  .arch-mini text { display: none; }
+  .arch-mini .edge path { stroke: var(--line-strong); stroke-width: 3; }
+  .arch-mini .edge .ah { fill: var(--line-strong); }
+  .arch-mini .edge .lbg { display: none; }
+  .arch-mini .node rect, .arch-mini .node polygon { fill: var(--surface); stroke: var(--line-strong); stroke-width: 2; }
+  .arch-mini .cluster rect { stroke: var(--line-strong); stroke-width: 2; }
+  .arch-mini .cluster text { display: block; font-size: 26px; fill: var(--ink-3); }
+  .arch-mini .cluster[data-id="NS_S"] text, .arch-mini .cluster[data-id="NS_P"] text,
+  .arch-mini .cluster[data-id="LOCAL"] text, .arch-mini .cluster[data-id="GHC"] text { display: none; }
+  .arch-mini .node.hit rect, .arch-mini .node.hit polygon { fill: var(--accent); stroke: var(--accent); }
+  .arch-mini .cluster.hit rect { stroke: var(--accent); stroke-width: 5; stroke-dasharray: none; fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .mini figcaption { font-size: 12px; color: var(--ink-3); margin-top: 6px; font-family: "IBM Plex Mono", monospace; line-height: 1.5; }
+
+  /* 知識點 */
+  .kp { border-top: 1px solid var(--line-strong); padding: 26px 0 40px; scroll-margin-top: 70px; }
+  .kp-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 12.5px; margin-bottom: 6px; }
+  .kp-head .id { font-family: "IBM Plex Mono", monospace; color: var(--ink-3); }
+  .kp-head .where { font-family: "IBM Plex Mono", monospace; color: var(--accent); font-size: 12px; }
+  .kp h2 { font-size: 21px; }
+  .kp .tldr { margin: 10px 0 0; font-size: 15.5px; color: var(--ink); max-width: 70ch; font-weight: 500; }
+  .kp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; margin-top: 16px; align-items: start; }
+  .kp-body { max-width: 70ch; color: var(--ink-2); }
+  .kp-body p { margin: 0 0 12px; }
+  .kp-body ul, .kp-body ol { margin: 0 0 12px; padding-left: 20px; }
+  .kp-body li { margin: 3px 0; }
+  .kp-body b { color: var(--ink); font-weight: 600; }
+  .terms { margin: 18px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 8px 28px; font-size: 13.5px; }
+  .terms div { display: grid; grid-template-columns: minmax(96px, auto) 1fr; gap: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .terms dt { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink); }
+  .terms dd { margin: 0; color: var(--ink-2); line-height: 1.55; }
+  .flowx { min-width: 0; }
+  .grid-flow { display: block; height: auto; width: 100%; }
+
+  /* 終端機 */
+  .cmds { margin-top: 22px; display: grid; gap: 14px; }
+  .cmds-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+  .term { border-left: 2px solid var(--line-strong); padding-left: 12px; }
+  .term pre { margin: 0; background: var(--code-bg); padding: 10px 12px; overflow-x: auto; font-family: "IBM Plex Mono", monospace; font-size: 12px; line-height: 1.55; color: var(--ink-3); }
+  .term .cmd { color: var(--ink); }
+  .term .cmd::before { content: "$ "; color: var(--accent); }
+  .term .cm { color: var(--wait); }
+  .term p { margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2); max-width: 78ch; }
+
+  .pitfalls { margin-top: 18px; font-size: 14px; max-width: 78ch; }
+  .pitfalls b { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--fail); margin-bottom: 4px; font-weight: 500; }
+  .pitfalls ul { margin: 0; padding-left: 20px; color: var(--ink-2); }
+  .pitfalls li { margin: 4px 0; }
+
+  .pager { display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line-strong); padding-top: 18px; margin-top: 10px; font-size: 14px; }
+  .pager a { text-decoration: none; display: grid; gap: 2px; }
+  .pager a:hover span:last-child { text-decoration: underline; }
+  .pager small { color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; }
+  .pager .next { text-align: right; margin-left: auto; }
+
+  /* 總覽頁：閱讀路線 */
+  .route { margin-top: 44px; }
+  .route h2 { font-size: 18px; margin-bottom: 6px; }
+  .route > p { color: var(--ink-2); margin: 0 0 14px; max-width: 70ch; }
+  .layer { border-top: 1px solid var(--line-strong); padding: 16px 0 18px; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; }
+  .layer h3 { font-size: 17px; }
+  .layer h3 a { text-decoration: none; }
+  .layer h3 a:hover { text-decoration: underline; }
+  .layer .eyebrow { margin-bottom: 4px; }
+  .layer .desc { color: var(--ink-2); font-size: 13.5px; margin: 6px 0 0; }
+  .layer ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .layer li a { display: grid; grid-template-columns: 62px 1fr; gap: 8px; text-decoration: none; font-size: 14px; }
+  .layer li a:hover .t { text-decoration: underline; }
+  .layer li .id { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+  .layer li .s { grid-column: 2; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+  .howto { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 6px 26px; font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 12px; }
+  .howto b { color: var(--ink); font-weight: 500; }
+  .note-src { margin-top: 36px; font-size: 12.5px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 12px; max-width: 90ch; }
+
+  @media (max-width: 1100px) {
+    .arch-wrap, .intro-grid, .kp-grid { grid-template-columns: 1fr; }
+    .kp-grid .mini, .intro-grid .mini { max-width: 420px; }
+  }
+  @media (max-width: 860px) {
+    .page { grid-template-columns: 1fr; }
+    .layer { grid-template-columns: 1fr; gap: 10px; }
+    .tabs { margin-left: 0; }
+  }
+
+</style>
+
+<header class="topbar"><div class="topbar-inner">
+    <div class="brand">Notes 架構地圖 <small>liaooliver/notes · notes-deploy</small></div>
+    <nav class="tabs" aria-label="分頁"><a href="index.html" aria-current="page">總覽</a><a href="git.html">Git 流程</a><a href="ci.html">CI 與發版</a><a href="gitops.html">GitOps</a><a href="k8s.html">k8s runtime</a><a href="cmd.html">k8s 指令</a></nav>
+  </div></header>
+<div class="page" style="display:block">
+  <main class="main">
+    <section class="intro">
+      <div class="eyebrow">總覽 · 41 個知識點 · 資料基準 2026-09-27</div>
+      <h1>一個 commit 怎麼變成 k3s 裡的 Pod</h1>
+      <p class="lede">這張圖是整個專案在 runtime 的樣子：左上是你的 Mac 和 GitHub，中間是 GitHub Actions，下半部是 Multipass VM 裡的 k3s。
+      選一個情境逐步播放，看事件怎麼流；或直接點任何方塊，下方會列出它對應的知識點。</p>
+    </section>
+    <div class="arch-wrap">
+      <div class="flow-viz" id="arch" tabindex="0"></div>
+      <aside class="node-panel" aria-live="polite"><p class="hint">點圖上的方塊或虛線框，這裡列出對應的知識點。</p><div id="node-panel"></div></aside>
+    </div>
+    <div class="howto">
+      <div><b>實線箭頭</b>：主動呼叫或推送（push、API 請求）</div>
+      <div><b>虛線箭頭</b>：輪詢或拉取（Argo CD polling、kubelet pull）、事後產物</div>
+      <div><b>菱形</b>：人工閘，run 會停在這裡等 Approve</div>
+      <div><b>虛線框</b>：邊界（repo、cluster、namespace），框也能點</div>
+    </div>
+    <section class="route">
+      <h2>閱讀路線</h2>
+      <p>由上往下就是一個 commit 走過的順序。每個知識點頂端都有一張縮小的總圖，標出它在哪裡。</p>
+      
+      <div class="layer">
+        <div><div class="eyebrow">第 1 層 · 本機與 GitHub</div><h3><a href="git.html">Git 流程規則</a></h3><p class="desc">這一層管的是 commit 從你的 Mac 出發，一路到 PR 被 merge 為止：本機 hook 先擋訊息格式，GitHub 再用 branch protection 擋 merge。merge 之後的 push 事件交給 GitHub Actions（CI 頁），這裡只講「什麼時候會叫醒它、什麼時候叫不醒」。</p></div>
+        <ol><li><a href="git.html#git-01"><span class="id">GIT-01</span><span class="t">分支模型：feature/* → staging → main，每一步叫醒什麼</span><span class="s">功能分支 push 什麼都不跑；PR 跑三個 required check；merge 後的 push 才會 build image。只有 push 到 main 會出現人工 Approve 與發版。</span></a></li><li><a href="git.html#git-02"><span class="id">GIT-02</span><span class="t">commit-msg hook：husky 怎麼掛上 git，commitlint 何時執行</span><span class="s">npm install 觸發 prepare 跑 husky，husky 把 git 的 hooksPath 指到 .husky/_。之後每次 git commit，git 先跑 commitlint，exit 非 0 就不寫入 commit。</span></a></li><li><a href="git.html#git-03"><span class="id">GIT-03</span><span class="t">CI 的 commitlint：PR 檢的跟 merge 後進歷史的，不是同一顆 commit</span><span class="s">PR 階段 lint 的是分支上的 commit；squash merge 時在網頁上寫的標題是新 commit，只在 merge 後的 push 才被 lint。它一旦進了受保護分支就改不掉，只能改規則。</span></a></li><li><a href="git.html#git-04"><span class="id">GIT-04</span><span class="t">Branch protection：三個 check 名稱、不要求 approve、直接 push 被拒</span><span class="s">main 與 staging 都要求走 PR，且三個 check 必須 success。GitHub 用 job 的 name 字串比對 required 清單，不看 workflow 檔名。approve 數設 0，因為單人 repo 自己不能 approve 自己。</span></a></li><li><a href="git.html#git-05"><span class="id">GIT-05</span><span class="t">promote staging → main 一定要 merge commit：squash 會切斷祖先</span><span class="s">squash 產生的 commit 只有一個 parent（舊 main），git 不知道內容來自 staging。下一次 promote 要重放 22 顆 commit、每個檔案都衝突。修法是 -s ours 把 main 記成 staging 的 parent，而且修的那個 PR 本身也不能 squash。</span></a></li><li><a href="git.html#git-06"><span class="id">GIT-06</span><span class="t">skip-ci 標記：訊息裡出現那個字串，run 根本不會被建立</span><span class="s">GitHub 在建立 run 之前先看 head commit 訊息，任何一行出現 skip-ci 標記就不建立。不是失敗，是不存在：沒有東西能 re-run，PR 上的 required check 也永遠不會出現。</span></a></li><li><a href="git.html#git-07"><span class="id">GIT-07</span><span class="t">Conventional Commits 的 type 決定下一個版號</span><span class="s">發版時 commit-analyzer 逐顆讀 main 上次 tag 之後的 commit header：feat 升 minor，fix / perf 升 patch，BREAKING CHANGE 升 major，其餘不發版。取所有 commit 中最高的那一級。</span></a></li></ol>
+      </div>
+      <div class="layer">
+        <div><div class="eyebrow">第 2 層 · GitHub Actions</div><h3><a href="ci.html">CI 與發版</a></h3><p class="desc">這一層從 GitHub 送出 push / pull_request 事件開始，到兩個 image 進 GHCR、bump job 把 image tag 寫進 notes-deploy、semantic-release 在 main 打 tag 為止。上游是本機 commit 與 PR 的 branch protection，下游是 Argo CD 讀 notes-deploy（GitOps 頁）。同一份 ci.yml 在 PR、push staging、push main 三種事件下跑出來的 job 完全不同，這頁就從這裡開始。</p></div>
+        <ol><li><a href="ci.html#ci-01"><span class="id">CI-01</span><span class="t">一個事件會叫醒哪些 job</span><span class="s">on 決定 run 建不建立，各 job 的 if 決定執行或 skipped：PR 只跑 build + white-box，push 才會 build image。</span></a></li><li><a href="ci.html#ci-02"><span class="id">CI-02</span><span class="t">needs 鏈與最小權限的 GITHUB_TOKEN</span><span class="s">GITHUB_TOKEN 預設只讀，只有 docker 與 release 各自加寫入權；寫 notes-deploy 用的是 deploy key。</span></a></li><li><a href="ci.html#ci-03"><span class="id">CI-03</span><span class="t">build → white-box：進 image 的就是測過的那份</span><span class="s">build 測完把 dist 存成 artifact，white-box 另開 runner 掃描，web 分身下載同一份 dist 進 image。</span></a></li><li><a href="ci.html#ci-04"><span class="id">CI-04</span><span class="t">docker matrix：兩個分身、兩種架構、各自的 cache</span><span class="s">matrix 開出 web / api 兩個分身，各自 build amd64 + arm64、推 sha-&lt;40 碼&gt; tag，再用 Trivy 掃 image。</span></a></li><li><a href="ci.html#ci-05"><span class="id">CI-05</span><span class="t">concurrency 與「分支已前進」的競態保護</span><span class="s">同分支一次只跑一個 run、不取消舊的；bump 前再比對分支 HEAD，擋住舊 run 把舊 tag 寫回去。</span></a></li><li><a href="ci.html#ci-06"><span class="id">CI-06</span><span class="t">bump job：把 image tag 寫進 notes-deploy</span><span class="s">用 deploy key checkout notes-deploy，kustomize 改兩行 newTag 後 commit、push，撞車就 rebase 重試一次。</span></a></li><li><a href="ci.html#ci-07"><span class="id">CI-07</span><span class="t">environment: production 的人工審核閘</span><span class="s">environment: production 讓 bump-production 在拿到 runner 前停在 Waiting，等人 Approve、Reject 或逾時。</span></a></li><li><a href="ci.html#ci-08"><span class="id">CI-08</span><span class="t">semantic-release：只打 tag、不寫回 main</span><span class="s">semantic-release 依上次 tag 之後的 feat / fix 算版號，只打 tag、發 Release，不 commit 回 main。</span></a></li><li><a href="ci.html#ci-09"><span class="id">CI-09</span><span class="t">LLM PR Assist：三個平行 job 與 Gemini fallback</span><span class="s">三個 job 平行呼叫 Gemini 再貼 PR 留言；失敗就貼 fallback，新 push 取消舊 run，不擋 merge。</span></a></li></ol>
+      </div>
+      <div class="layer">
+        <div><div class="eyebrow">第 3 層 · GHCR → notes-deploy → Argo CD</div><h3><a href="gitops.html">GitOps 鏈路</a></h3><p class="desc">這一層從 image 已經躺在 GHCR 開始。CI 把新的 tag 寫進 notes-deploy 這個 repo，Argo CD 在 k3s 裡讀 Git、算出差異、套進 notes-staging / notes-production。上游是 CI 與發版；Deployment、Service、Ingress 本身怎麼運作，交給 k8s runtime 那一頁。</p></div>
+        <ol><li><a href="gitops.html#ops-01"><span class="id">OPS-01</span><span class="t">GitOps：cluster 該長什麼樣，只看 notes-deploy 的 main</span><span class="s">唯一的真實來源是 notes-deploy 的 main。CI 只改 Git、從不連 cluster；Argo CD 在 cluster 裡把 Git 拉進來套用，這是 pull-based。</span></a></li><li><a href="gitops.html#ops-02"><span class="id">OPS-02</span><span class="t">為什麼 manifest 放在另一個 repo</span><span class="s">notes 的 main / staging 是 classic branch protection，required check 沒有身分豁免。bot 的 bump commit 身上不會有 check，換任何 token 都推不進去，只能改寫一個不受保護的 repo。</span></a></li><li><a href="gitops.html#ops-03"><span class="id">OPS-03</span><span class="t">deploy key：CI 怎麼拿到寫 notes-deploy 的權限</span><span class="s">GITHUB_TOKEN 只對 notes 自己有效。CI 用存成 secret 的 SSH 私鑰寫 notes-deploy；這種 push 會觸發 notes-deploy 的 Manifest Check，GITHUB_TOKEN 做出的 push 則不會觸發任何 workflow。</span></a></li><li><a href="gitops.html#ops-04"><span class="id">OPS-04</span><span class="t">kustomize：一份 base、兩個 overlay 目錄</span><span class="s">base 放 5 份共用資源，overlay 只寫三種差異：namespace、兩個 image 的 newTag、Ingress host。kustomize build 把兩者合成完整 YAML，Argo CD 與 Manifest Check 跑的都是這一步。</span></a></li><li><a href="gitops.html#ops-05"><span class="id">OPS-05</span><span class="t">image tag 用 sha-40 碼 commit，staging 與 production 不是同一顆 image</span><span class="s">tag 用完整 40 碼 commit SHA：不會碰撞、能直接對回原始碼。production 跑的是 main 的 merge commit 重新 build 的 image，跟 staging 原始碼相同，但不是同一次 build。</span></a></li><li><a href="gitops.html#ops-06"><span class="id">OPS-06</span><span class="t">Argo CD Application：一次 reconcile 做了什麼</span><span class="s">Application 告訴 Argo CD 讀哪個 repo 的哪個分支與目錄、套進哪個 namespace。預設約每 3 分鐘比對一次。Sync 看「跟 Git 一不一樣」，Health 看「跑得好不好」，兩條軸互相獨立。</span></a></li><li><a href="gitops.html#ops-07"><span class="id">OPS-07</span><span class="t">Argo CD UI 的 resource tree：每個節點是誰建的</span><span class="s">Git 裡只有 5 個物件：2 個 Deployment、2 個 Service、1 個 Ingress。樹上的 ReplicaSet、Pod、Endpoints 是 k8s controller 依這 5 個物件建出來的，Argo CD 依 ownerReferences 把它們掛上樹。</span></a></li><li><a href="gitops.html#ops-08"><span class="id">OPS-08</span><span class="t">Rollback = revert bump commit；Synced 不代表是最新 commit</span><span class="s">退版就是在 notes-deploy revert 那個 bump commit，Argo CD 下一輪把舊 tag 套回去。判斷 Argo CD 有沒有看到最新 commit，要看 revision，不要看 Synced 兩個字。</span></a></li></ol>
+      </div>
+      <div class="layer">
+        <div><div class="eyebrow">第 4 層 · Multipass VM 裡的 k3s</div><h3><a href="k8s.html">k8s runtime</a></h3><p class="desc">這一層從「manifest 已經被 Argo CD apply 進 cluster」開始。接下來是 k3s 自己的事：controller 把 Deployment 變成 Pod、Service 靠 label 找到 Pod、Traefik 把瀏覽器的 request 送到對的容器。每個知識點都拆成「誰呼叫誰、依序發生什麼」。</p></div>
+        <ol><li><a href="k8s.html#k8s-01"><span class="id">K8S-01</span><span class="t">環境全貌：Mac 裡的 VM 裡的單節點 k3s</span><span class="s">整個 cluster 是 Mac 上一台 6 GB 的 arm64 VM；control-plane 與 worker 是同一台，Traefik、ServiceLB、CoreDNS 都是 k3s 內建。</span></a></li><li><a href="k8s.html#k8s-02"><span class="id">K8S-02</span><span class="t">Namespace：一個 cluster 放兩個環境</span><span class="s">物件的唯一鍵是 kind + namespace + name，所以兩個 notes-web 不衝突；namespace 隔開的是名稱，不是網路也不是資源。</span></a></li><li><a href="k8s.html#k8s-03"><span class="id">K8S-03</span><span class="t">Deployment → ReplicaSet → Pod：image tag 變了之後</span><span class="s">tag 一變就產生新的 ReplicaSet；replicas 1 的預設策略是先多開一個新 Pod，readinessProbe 通過之後才殺舊 Pod。</span></a></li><li><a href="k8s.html#k8s-04"><span class="id">K8S-04</span><span class="t">Service 與 label selector：流量怎麼找到 Pod</span><span class="s">Service 用 selector 挑 Pod，endpoints controller 把「符合 label 且 Ready」的 Pod IP 列成清單；少一個 label 就會選錯 Pod，而且不會報錯。</span></a></li><li><a href="k8s.html#k8s-05"><span class="id">K8S-05</span><span class="t">一個 request 的完整路徑：瀏覽器到 Pod</span><span class="s">/etc/hosts 把網址指到 VM，ServiceLB 把 80 port 交給 Traefik，Traefik 依 host 與最長前綴挑 Service，再直接連 Pod IP。</span></a></li><li><a href="k8s.html#k8s-06"><span class="id">K8S-06</span><span class="t">容器裡面：nginx 與 Express 各自在做什麼</span><span class="s">web image 是 nginx 加上 build 好的 Vue 靜態檔，靠 try_files 撐 SPA；api image 是單層 node:22-alpine 跑 Express，資料只在記憶體。</span></a></li><li><a href="k8s.html#k8s-07"><span class="id">K8S-07</span><span class="t">image pull：kubelet 怎麼從 GHCR 拿到 arm64 那一份</span><span class="s">public package 用匿名 token 就拉得到，不需要 imagePullSecrets；tag 背後是 image index，containerd 自己挑 linux/arm64。tag 不存在時 restart 沒有用。</span></a></li><li><a href="k8s.html#k8s-08"><span class="id">K8S-08</span><span class="t">resources：requests 給 scheduler 看，limits 給 kernel 執行</span><span class="s">scheduler 只拿 requests 算放不放得下；limits 寫進 cgroup，CPU 超過會被限速，記憶體超過會被 OOMKilled。</span></a></li><li><a href="k8s.html#k8s-09"><span class="id">K8S-09</span><span class="t">Traefik 回 no available server：從外往內排錯</span><span class="s">no available server 代表路由有對到，但那個 Service 的 endpoints 是空的：不是 selector 對不到 Pod，就是 Pod 還沒 Ready。</span></a></li></ol>
+      </div>
+      <div class="layer">
+        <div><div class="eyebrow">工具箱 · kubectl、kustomize、Argo CD、Multipass</div><h3><a href="cmd.html">k8s 指令</a></h3><p class="desc">這一頁不是 cheat sheet。每條指令都拆開講：它在 runtime 對哪個元件發了什麼 request、讀的是哪個物件的哪個欄位、在這個專案什麼時候該用。前面幾頁講「CI 怎麼把 image tag 寫進 notes-deploy、Argo CD 怎麼把它套進 k3s」，這一頁是你站在 Mac 前面，想親眼確認那些事真的發生時手上的工具。</p></div>
+        <ol><li><a href="cmd.html#cmd-01"><span class="id">CMD-01</span><span class="t">kubectl 怎麼找到 cluster：kubeconfig 與一次 get pods</span><span class="s">kubectl 不存狀態：每條指令都先讀 kubeconfig 找到 VM:6443，再對 k3s API server 發一次 HTTPS request。</span></a></li><li><a href="cmd.html#cmd-02"><span class="id">CMD-02</span><span class="t">看狀態：get 讀物件本身，describe 多拉一份 Events</span><span class="s">get 只讀物件的 status，describe 多查一次 Events。READY 來自 readinessProbe，STATUS 是 reason 不是 phase。</span></a></li><li><a href="cmd.html#cmd-03"><span class="id">CMD-03</span><span class="t">Pod 起不來：STATUS 決定下一個指令</span><span class="s">依 STATUS 分四條路：拉不到 image 看 Events、崩潰看 logs --previous、0/1 看 probe、1/1 查 endpoints。</span></a></li><li><a href="cmd.html#cmd-04"><span class="id">CMD-04</span><span class="t">Pod 好好的但網址打不開：由外往內一層一層驗</span><span class="s">request 經過 /etc/hosts、Traefik、Ingress、Service、Pod 五關，每關有一個指令能單獨驗證。</span></a></li><li><a href="cmd.html#cmd-05"><span class="id">CMD-05</span><span class="t">rollout：每個子指令改了哪個欄位，為什麼 undo 會被蓋回去</span><span class="s">restart 只加一個 annotation；undo 改回舊 image，會被 selfHeal 蓋回。rollback 要在 notes-deploy git revert。</span></a></li><li><a href="cmd.html#cmd-06"><span class="id">CMD-06</span><span class="t">kustomize：同一份運算在 CI、manifest-check、Argo CD 各跑一次</span><span class="s">kustomize build 不碰 cluster：CI 改 newTag、manifest-check 驗算、Argo CD 算同一份再 apply。</span></a></li><li><a href="cmd.html#cmd-07"><span class="id">CMD-07</span><span class="t">Argo CD：Application 是一個物件，Sync 與 Health 是兩個獨立判斷</span><span class="s">Application 是 argocd namespace 裡的物件：Sync 比 Git 與 live，Health 看資源本身，revision 說明讀到哪個 commit。</span></a></li><li><a href="cmd.html#cmd-08"><span class="id">CMD-08</span><span class="t">Multipass 與 k3s 主機層：cluster 底下那台 VM</span><span class="s">kubectl 逾時、IP 變了、AGE 不對時往下查 VM：multipass 管開關與 IP，VM 時鐘會跟 Mac 睡眠一起停。</span></a></li></ol>
+      </div>
+    </section>
+    <p class="note-src">資料來源：<code>liaooliver/notes</code> 與 <code>liaooliver/notes-deploy</code> 在 2026-09-27 的實際檔案、<code>docs/</code> 的踩坑紀錄、GitHub API 查到的 workflow runs。
+    Argo CD 的畫面與 kubectl 輸出是依 manifest 重畫或推得，文中標示「示意」；GitHub 網頁截圖因執行環境的網路政策拿不到，run 的資料改用 API 取得。</p>
+  </main>
+</div>
+<script type="application/json" id="arch-data">{"size":{"w":1360,"h":660},"clusters":[{"id":"LOCAL","x":10,"y":118,"w":150,"h":90,"label":"本機 Mac"},{"id":"GHC","x":180,"y":118,"w":150,"h":90,"label":"github.com"},{"id":"ACTIONS","x":366,"y":20,"w":808,"h":290,"label":"GitHub Actions · notes","right":true},{"id":"DEPLOYC","x":366,"y":356,"w":318,"h":84,"label":"notes-deploy repo"},{"id":"K3S","x":186,"y":440,"w":870,"h":210,"label":"k3s · Multipass VM","right":true,"bottom":true},{"id":"NS_S","x":385,"y":452,"w":290,"h":82,"label":"ns notes-staging"},{"id":"NS_P","x":725,"y":452,"w":290,"h":82,"label":"ns notes-production"}],"nodes":[{"id":"DEV","x":20,"y":140,"l":["開發者","git · husky"]},{"id":"GH","x":190,"y":140,"l":["notes repo","branch protection"]},{"id":"CL","x":380,"y":50,"l":["commitlint.yml","訊息規範"]},{"id":"LLM","x":540,"y":50,"l":["llm-pr-assist.yml","PR 留言"]},{"id":"GEM","x":1210,"y":50,"l":["Gemini API","generateContent"]},{"id":"BUILD","x":380,"y":140,"l":["build","test · build"]},{"id":"WB","x":540,"y":140,"l":["white-box","Semgrep · Trivy fs"]},{"id":"DOCKER","x":700,"y":140,"l":["docker ×2","buildx · Trivy image"]},{"id":"GHCR","x":1210,"y":140,"l":["GHCR","notes · notes-api"]},{"id":"BS","x":540,"y":240,"l":["bump-staging","自動"]},{"id":"ENV","x":700,"y":232,"w":130,"h":62,"shape":"diamond","l":["production","人工 Approve"]},{"id":"BP","x":870,"y":240,"l":["bump-production","Approve 之後"]},{"id":"REL","x":1030,"y":240,"l":["release","semantic-release"]},{"id":"MC","x":380,"y":380,"l":["manifest-check","kustomize build"]},{"id":"DEPLOY","x":540,"y":380,"l":["notes-deploy","base · overlays"]},{"id":"ARGO","x":200,"y":478,"l":["Argo CD","Application ×2"]},{"id":"WEB_S","x":395,"y":478,"l":["notes-web","nginx + Vue"]},{"id":"API_S","x":535,"y":478,"l":["notes-api","Express :3000"]},{"id":"WEB_P","x":735,"y":478,"l":["notes-web","nginx + Vue"]},{"id":"API_P","x":875,"y":478,"l":["notes-api","Express :3000"]},{"id":"TRA","x":700,"y":590,"l":["Traefik","Ingress 分流"]},{"id":"BROWSER","x":1210,"y":590,"l":["瀏覽器","notes.local"]}],"edges":[{"id":"e_dev_gh","pts":[[150,163],[190,163]],"label":"push","lx":170,"ly":155},{"id":"e_gh_cl","pts":[[255,140],[255,73],[380,73]],"label":"PR / push","lx":318,"ly":67},{"id":"e_gh_llm","pts":[[285,140],[285,34],[605,34],[605,50]],"label":"PR","lx":440,"ly":30},{"id":"e_llm_gem","pts":[[670,73],[1210,73]],"label":"prompt → 建議文字","lx":940,"ly":67},{"id":"e_gh_build","pts":[[320,163],[380,163]]},{"id":"e_build_wb","pts":[[510,163],[540,163]]},{"id":"e_wb_docker","pts":[[670,163],[700,163]]},{"id":"e_docker_ghcr","pts":[[830,163],[1210,163]],"label":"push :sha-\u003ccommit>","lx":1020,"ly":155},{"id":"e_docker_bs","pts":[[740,186],[740,212],[605,212],[605,240]],"label":"staging","lx":672,"ly":207},{"id":"e_docker_env","pts":[[765,186],[765,232]],"label":"main","lx":771,"ly":214,"anchor":"start"},{"id":"e_env_bp","pts":[[830,263],[870,263]]},{"id":"e_bp_rel","pts":[[1000,263],[1030,263]]},{"id":"e_rel_gh","pts":[[1095,286],[1095,322],[230,322],[230,186]],"dashed":true,"label":"tag + GitHub Release","lx":1010,"ly":316},{"id":"e_bs_deploy","pts":[[605,286],[605,380]],"label":"deploy key","lx":611,"ly":342,"anchor":"start"},{"id":"e_bp_deploy","pts":[[935,286],[935,348],[645,348],[645,380]],"label":"deploy key","lx":800,"ly":342},{"id":"e_deploy_mc","pts":[[540,403],[510,403]]},{"id":"e_deploy_argo","pts":[[560,426],[560,446],[265,446],[265,478]],"dashed":true,"label":"polling","lx":330,"ly":441},{"id":"e_argo_s","pts":[[330,501],[385,501]],"label":"sync","lx":357,"ly":494},{"id":"e_argo_p","pts":[[265,524],[265,562],[990,562],[990,534]],"label":"sync","lx":900,"ly":557},{"id":"e_ghcr_pull","pts":[[1275,186],[1275,493],[1056,493]],"dashed":true,"label":"image pull","lx":1165,"ly":487},{"id":"e_br_tra","pts":[[1210,613],[830,613]],"label":"Host: notes.local","lx":1020,"ly":606},{"id":"e_tra_s","pts":[[700,613],[530,613],[530,534]],"label":"notes-staging.local","lx":615,"ly":606},{"id":"e_tra_p","pts":[[790,590],[790,534]],"label":"notes.local","lx":796,"ly":580,"anchor":"start"}],"scenarios":[{"id":"s1","label":"開 PR 到 staging","steps":[{"n":["DEV","GH"],"e":["e_dev_gh"],"t":"開發者 push feature/* 分支，在 GitHub 開 PR，base 選 staging"},{"n":["CL"],"e":["e_gh_cl"],"t":"commitlint.yml：逐一檢查 PR 裡每個 commit 的訊息格式"},{"n":["LLM","GEM"],"e":["e_gh_llm","e_llm_gem"],"t":"llm-pr-assist.yml：三個 job 平行呼叫 Gemini，結果貼成 PR 留言（不是 required）"},{"n":["BUILD"],"e":["e_gh_build"],"t":"ci.yml build：npm ci → npm test → npm run build，上傳 dist"},{"n":["WB"],"e":["e_build_wb"],"t":"white-box：Semgrep + Trivy fs，CRITICAL/HIGH 直接讓 job 失敗"},{"n":["GH"],"e":[],"t":"三個 required checks 綠燈，Merge 按鈕才可用；PR 事件不會 build image、不會部署"}]},{"id":"s2","label":"merge 進 staging → k3s 換版","steps":[{"n":["GH"],"e":[],"t":"merge 之後 GitHub 發出 push staging 事件，ci.yml 在合併後的程式碼上重跑"},{"n":["BUILD","WB"],"e":["e_gh_build","e_build_wb"],"t":"build + white-box 再跑一次：image 必須從合併後的程式碼產生"},{"n":["DOCKER"],"e":["e_wb_docker"],"t":"docker matrix：web 與 api 兩個分身各自 buildx，產出 amd64 + arm64"},{"n":["GHCR"],"e":["e_docker_ghcr"],"t":"push ghcr.io/liaooliver/notes:sha-\u003c40 碼>，接著用 Trivy 掃剛推上去的 image"},{"n":["BS"],"e":["e_docker_bs"],"t":"bump-staging：確認 staging 沒前進，kustomize edit set image 改 overlays/staging"},{"n":["DEPLOY","MC"],"e":["e_bs_deploy","e_deploy_mc"],"t":"用 deploy key push 進 notes-deploy main；那邊的 manifest-check 驗一次 kustomize build"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 輪詢到 notes-deploy 的新 commit，notes-staging 變成 OutOfSync"},{"n":["ARGO","NS_S","WEB_S","API_S"],"e":["e_argo_s"],"t":"automated sync：apply 新的 Deployment，controller 開始 rolling update"},{"n":["GHCR","K3S"],"e":["e_ghcr_pull"],"t":"kubelet 依 image tag 從 GHCR 拉 arm64 那一層；新 Pod 通過 readinessProbe 才接流量"},{"n":["BROWSER","TRA","NS_S"],"e":["e_br_tra","e_tra_s"],"t":"瀏覽器打 notes-staging.local，Traefik 依 Host 與路徑分流到 staging 的 Service"}]},{"id":"s3","label":"staging → main + Approve","steps":[{"n":["GH"],"e":[],"t":"開 PR staging → main，跑一樣的 PR 檢查；用 merge commit 合併，發出 push main"},{"n":["BUILD","WB"],"e":["e_gh_build","e_build_wb"],"t":"build + white-box 在 main 的 commit 上再跑一次"},{"n":["DOCKER","GHCR"],"e":["e_wb_docker","e_docker_ghcr"],"t":"依 main 的 commit SHA 重新 build、push 一組 image"},{"n":["ENV"],"e":["e_docker_env"],"t":"bump-production 綁了 environment: production，run 停在 Waiting"},{"n":["ENV"],"e":[],"t":"Reviewer 在 run 頁面按 Review deployments → Approve and deploy"},{"n":["BP"],"e":["e_env_bp"],"t":"bump-production：再確認 main 沒前進，改 overlays/production 的 image tag"},{"n":["DEPLOY"],"e":["e_bp_deploy"],"t":"用 deploy key push 進 notes-deploy main"},{"n":["REL","GH"],"e":["e_bp_rel","e_rel_gh"],"t":"release：semantic-release 分析 commit、算版號、打 tag、開 GitHub Release"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 輪詢到 overlays/production 變了，notes-production 變成 OutOfSync"},{"n":["ARGO","NS_P","WEB_P","API_P"],"e":["e_argo_p"],"t":"automated sync → rolling update；人工閘只有上游那一道 Approve"},{"n":["BROWSER","TRA","NS_P"],"e":["e_br_tra","e_tra_p"],"t":"瀏覽器打 notes.local，流量進到 production"}]},{"id":"s4","label":"production 回滾","steps":[{"n":["DEV","DEPLOY"],"e":[],"t":"在 notes-deploy git revert 那個 bump commit 並 push（這個 repo 不設保護，不用 PR）"},{"n":["MC"],"e":["e_deploy_mc"],"t":"manifest-check 驗 kustomize build 還算得出來"},{"n":["ARGO"],"e":["e_deploy_argo"],"t":"Argo CD 發現 image tag 變回舊值，notes-production 變成 OutOfSync"},{"n":["ARGO","NS_P","WEB_P","API_P"],"e":["e_argo_p"],"t":"sync 後 rolling update 回舊版；舊 image 還在 GHCR，不用重新 build"},{"n":["NS_P"],"e":[],"t":"直接 kubectl rollout undo 沒用：selfHeal 會把 cluster 改回 Git 裡寫的版本"}]}],"names":{"DEV":"開發者本機（git、husky commit-msg hook）","GH":"GitHub：liaooliver/notes（PR、branch protection）","ACTIONS":"GitHub Actions","CL":"commitlint.yml","LLM":"llm-pr-assist.yml","GEM":"Gemini API","BUILD":"ci.yml › build","WB":"ci.yml › white-box","DOCKER":"ci.yml › docker（matrix web / api）","GHCR":"GHCR：ghcr.io/liaooliver/notes、notes-api","BS":"ci.yml › bump-staging","ENV":"GitHub Environment：production","BP":"ci.yml › bump-production","REL":"ci.yml › release","MC":"notes-deploy › manifest-check.yml","DEPLOY":"liaooliver/notes-deploy","DEPLOYC":"liaooliver/notes-deploy","K3S":"k3s cluster（Multipass VM）","ARGO":"Argo CD","NS_S":"namespace notes-staging","NS_P":"namespace notes-production","WEB_S":"notes-staging › notes-web","API_S":"notes-staging › notes-api","WEB_P":"notes-production › notes-web","API_P":"notes-production › notes-api","TRA":"Traefik（k3s 內建 Ingress controller）","BROWSER":"Mac 上的瀏覽器","LOCAL":"開發者本機","GHC":"github.com"}}</script>
+<script type="application/json" id="kp-index">{"DEV":[{"id":"git-01","page":"git","pageTitle":"Git 流程規則","title":"分支模型：feature/* → staging → main，每一步叫醒什麼","tldr":"功能分支 push 什麼都不跑；PR 跑三個 required check；merge 後的 push 才會 build image。只有 push 到 main 會出現人工 Approve 與發版。"},{"id":"git-02","page":"git","pageTitle":"Git 流程規則","title":"commit-msg hook：husky 怎麼掛上 git，commitlint 何時執行","tldr":"npm install 觸發 prepare 跑 husky，husky 把 git 的 hooksPath 指到 .husky/_。之後每次 git commit，git 先跑 commitlint，exit 非 0 就不寫入 commit。"},{"id":"git-05","page":"git","pageTitle":"Git 流程規則","title":"promote staging → main 一定要 merge commit：squash 會切斷祖先","tldr":"squash 產生的 commit 只有一個 parent（舊 main），git 不知道內容來自 staging。下一次 promote 要重放 22 顆 commit、每個檔案都衝突。修法是 -s ours 把 main 記成 staging 的 parent，而且修的那個 PR 本身也不能 squash。"},{"id":"git-07","page":"git","pageTitle":"Git 流程規則","title":"Conventional Commits 的 type 決定下一個版號","tldr":"發版時 commit-analyzer 逐顆讀 main 上次 tag 之後的 commit header：feat 升 minor，fix / perf 升 patch，BREAKING CHANGE 升 major，其餘不發版。取所有 commit 中最高的那一級。"},{"id":"cmd-01","page":"cmd","pageTitle":"k8s 指令","title":"kubectl 怎麼找到 cluster：kubeconfig 與一次 get pods","tldr":"kubectl 不存狀態：每條指令都先讀 kubeconfig 找到 VM:6443，再對 k3s API server 發一次 HTTPS request。"},{"id":"cmd-08","page":"cmd","pageTitle":"k8s 指令","title":"Multipass 與 k3s 主機層：cluster 底下那台 VM","tldr":"kubectl 逾時、IP 變了、AGE 不對時往下查 VM：multipass 管開關與 IP，VM 時鐘會跟 Mac 睡眠一起停。"}],"GH":[{"id":"git-01","page":"git","pageTitle":"Git 流程規則","title":"分支模型：feature/* → staging → main，每一步叫醒什麼","tldr":"功能分支 push 什麼都不跑；PR 跑三個 required check；merge 後的 push 才會 build image。只有 push 到 main 會出現人工 Approve 與發版。"},{"id":"git-03","page":"git","pageTitle":"Git 流程規則","title":"CI 的 commitlint：PR 檢的跟 merge 後進歷史的，不是同一顆 commit","tldr":"PR 階段 lint 的是分支上的 commit；squash merge 時在網頁上寫的標題是新 commit，只在 merge 後的 push 才被 lint。它一旦進了受保護分支就改不掉，只能改規則。"},{"id":"git-04","page":"git","pageTitle":"Git 流程規則","title":"Branch protection：三個 check 名稱、不要求 approve、直接 push 被拒","tldr":"main 與 staging 都要求走 PR，且三個 check 必須 success。GitHub 用 job 的 name 字串比對 required 清單，不看 workflow 檔名。approve 數設 0，因為單人 repo 自己不能 approve 自己。"},{"id":"git-05","page":"git","pageTitle":"Git 流程規則","title":"promote staging → main 一定要 merge commit：squash 會切斷祖先","tldr":"squash 產生的 commit 只有一個 parent（舊 main），git 不知道內容來自 staging。下一次 promote 要重放 22 顆 commit、每個檔案都衝突。修法是 -s ours 把 main 記成 staging 的 parent，而且修的那個 PR 本身也不能 squash。"},{"id":"git-06","page":"git","pageTitle":"Git 流程規則","title":"skip-ci 標記：訊息裡出現那個字串，run 根本不會被建立","tldr":"GitHub 在建立 run 之前先看 head commit 訊息，任何一行出現 skip-ci 標記就不建立。不是失敗，是不存在：沒有東西能 re-run，PR 上的 required check 也永遠不會出現。"},{"id":"ci-01","page":"ci","pageTitle":"CI 與發版","title":"一個事件會叫醒哪些 job","tldr":"on 決定 run 建不建立，各 job 的 if 決定執行或 skipped：PR 只跑 build + white-box，push 才會 build image。"},{"id":"ci-08","page":"ci","pageTitle":"CI 與發版","title":"semantic-release：只打 tag、不寫回 main","tldr":"semantic-release 依上次 tag 之後的 feat / fix 算版號，只打 tag、發 Release，不 commit 回 main。"},{"id":"ci-09","page":"ci","pageTitle":"CI 與發版","title":"LLM PR Assist：三個平行 job 與 Gemini fallback","tldr":"三個 job 平行呼叫 Gemini 再貼 PR 留言；失敗就貼 fallback，新 push 取消舊 run，不擋 merge。"},{"id":"ops-02","page":"gitops","pageTitle":"GitOps 鏈路","title":"為什麼 manifest 放在另一個 repo","tldr":"notes 的 main / staging 是 classic branch protection，required check 沒有身分豁免。bot 的 bump commit 身上不會有 check，換任何 token 都推不進去，只能改寫一個不受保護的 repo。"}],"CL":[{"id":"git-01","page":"git","pageTitle":"Git 流程規則","title":"分支模型：feature/* → staging → main，每一步叫醒什麼","tldr":"功能分支 push 什麼都不跑；PR 跑三個 required check；merge 後的 push 才會 build image。只有 push 到 main 會出現人工 Approve 與發版。"},{"id":"git-03","page":"git","pageTitle":"Git 流程規則","title":"CI 的 commitlint：PR 檢的跟 merge 後進歷史的，不是同一顆 commit","tldr":"PR 階段 lint 的是分支上的 commit；squash merge 時在網頁上寫的標題是新 commit，只在 merge 後的 push 才被 lint。它一旦進了受保護分支就改不掉，只能改規則。"},{"id":"git-04","page":"git","pageTitle":"Git 流程規則","title":"Branch protection：三個 check 名稱、不要求 approve、直接 push 被拒","tldr":"main 與 staging 都要求走 PR，且三個 check 必須 success。GitHub 用 job 的 name 字串比對 required 清單，不看 workflow 檔名。approve 數設 0，因為單人 repo 自己不能 approve 自己。"},{"id":"git-06","page":"git","pageTitle":"Git 流程規則","title":"skip-ci 標記：訊息裡出現那個字串，run 根本不會被建立","tldr":"GitHub 在建立 run 之前先看 head commit 訊息，任何一行出現 skip-ci 標記就不建立。不是失敗，是不存在：沒有東西能 re-run，PR 上的 required check 也永遠不會出現。"},{"id":"git-07","page":"git","pageTitle":"Git 流程規則","title":"Conventional Commits 的 type 決定下一個版號","tldr":"發版時 commit-analyzer 逐顆讀 main 上次 tag 之後的 commit header：feat 升 minor，fix / perf 升 patch，BREAKING CHANGE 升 major，其餘不發版。取所有 commit 中最高的那一級。"}],"BUILD":[{"id":"git-01","page":"git","pageTitle":"Git 流程規則","title":"分支模型：feature/* → staging → main，每一步叫醒什麼","tldr":"功能分支 push 什麼都不跑；PR 跑三個 required check；merge 後的 push 才會 build image。只有 push 到 main 會出現人工 Approve 與發版。"},{"id":"git-04","page":"git","pageTitle":"Git 流程規則","title":"Branch protection：三個 check 名稱、不要求 approve、直接 push 被拒","tldr":"main 與 staging 都要求走 PR，且三個 check 必須 success。GitHub 用 job 的 name 字串比對 required 清單，不看 workflow 檔名。approve 數設 0，因為單人 repo 自己不能 approve 自己。"},{"id":"git-06","page":"git","pageTitle":"Git 流程規則","title":"skip-ci 標記：訊息裡出現那個字串，run 根本不會被建立","tldr":"GitHub 在建立 run 之前先看 head commit 訊息，任何一行出現 skip-ci 標記就不建立。不是失敗，是不存在：沒有東西能 re-run，PR 上的 required check 也永遠不會出現。"},{"id":"ci-01","page":"ci","pageTitle":"CI 與發版","title":"一個事件會叫醒哪些 job","tldr":"on 決定 run 建不建立，各 job 的 if 決定執行或 skipped：PR 只跑 build + white-box，push 才會 build image。"},{"id":"ci-02","page":"ci","pageTitle":"CI 與發版","title":"needs 鏈與最小權限的 GITHUB_TOKEN","tldr":"GITHUB_TOKEN 預設只讀，只有 docker 與 release 各自加寫入權；寫 notes-deploy 用的是 deploy key。"},{"id":"ci-03","page":"ci","pageTitle":"CI 與發版","title":"build → white-box：進 image 的就是測過的那份","tldr":"build 測完把 dist 存成 artifact，white-box 另開 runner 掃描，web 分身下載同一份 dist 進 image。"}],"WB":[{"id":"git-01","page":"git","pageTitle":"Git 流程規則","title":"分支模型：feature/* → staging → main，每一步叫醒什麼","tldr":"功能分支 push 什麼都不跑；PR 跑三個 required check；merge 後的 push 才會 build image。只有 push 到 main 會出現人工 Approve 與發版。"},{"id":"git-04","page":"git","pageTitle":"Git 流程規則","title":"Branch protection：三個 check 名稱、不要求 approve、直接 push 被拒","tldr":"main 與 staging 都要求走 PR，且三個 check 必須 success。GitHub 用 job 的 name 字串比對 required 清單，不看 workflow 檔名。approve 數設 0，因為單人 repo 自己不能 approve 自己。"},{"id":"ci-01","page":"ci","pageTitle":"CI 與發版","title":"一個事件會叫醒哪些 job","tldr":"on 決定 run 建不建立，各 job 的 if 決定執行或 skipped：PR 只跑 build + white-box，push 才會 build image。"},{"id":"ci-02","page":"ci","pageTitle":"CI 與發版","title":"needs 鏈與最小權限的 GITHUB_TOKEN","tldr":"GITHUB_TOKEN 預設只讀，只有 docker 與 release 各自加寫入權；寫 notes-deploy 用的是 deploy key。"},{"id":"ci-03","page":"ci","pageTitle":"CI 與發版","title":"build → white-box：進 image 的就是測過的那份","tldr":"build 測完把 dist 存成 artifact，white-box 另開 runner 掃描，web 分身下載同一份 dist 進 image。"}],"ACTIONS":[{"id":"git-06","page":"git","pageTitle":"Git 流程規則","title":"skip-ci 標記：訊息裡出現那個字串，run 根本不會被建立","tldr":"GitHub 在建立 run 之前先看 head commit 訊息，任何一行出現 skip-ci 標記就不建立。不是失敗，是不存在：沒有東西能 re-run，PR 上的 required check 也永遠不會出現。"},{"id":"ci-01","page":"ci","pageTitle":"CI 與發版","title":"一個事件會叫醒哪些 job","tldr":"on 決定 run 建不建立，各 job 的 if 決定執行或 skipped：PR 只跑 build + white-box，push 才會 build image。"},{"id":"ci-05","page":"ci","pageTitle":"CI 與發版","title":"concurrency 與「分支已前進」的競態保護","tldr":"同分支一次只跑一個 run、不取消舊的；bump 前再比對分支 HEAD，擋住舊 run 把舊 tag 寫回去。"}],"REL":[{"id":"git-07","page":"git","pageTitle":"Git 流程規則","title":"Conventional Commits 的 type 決定下一個版號","tldr":"發版時 commit-analyzer 逐顆讀 main 上次 tag 之後的 commit header：feat 升 minor，fix / perf 升 patch，BREAKING CHANGE 升 major，其餘不發版。取所有 commit 中最高的那一級。"},{"id":"ci-01","page":"ci","pageTitle":"CI 與發版","title":"一個事件會叫醒哪些 job","tldr":"on 決定 run 建不建立，各 job 的 if 決定執行或 skipped：PR 只跑 build + white-box，push 才會 build image。"},{"id":"ci-02","page":"ci","pageTitle":"CI 與發版","title":"needs 鏈與最小權限的 GITHUB_TOKEN","tldr":"GITHUB_TOKEN 預設只讀，只有 docker 與 release 各自加寫入權；寫 notes-deploy 用的是 deploy key。"},{"id":"ci-07","page":"ci","pageTitle":"CI 與發版","title":"environment: production 的人工審核閘","tldr":"environment: production 讓 bump-production 在拿到 runner 前停在 Waiting，等人 Approve、Reject 或逾時。"},{"id":"ci-08","page":"ci","pageTitle":"CI 與發版","title":"semantic-release：只打 tag、不寫回 main","tldr":"semantic-release 依上次 tag 之後的 feat / fix 算版號，只打 tag、發 Release，不 commit 回 main。"}],"DOCKER":[{"id":"ci-01","page":"ci","pageTitle":"CI 與發版","title":"一個事件會叫醒哪些 job","tldr":"on 決定 run 建不建立，各 job 的 if 決定執行或 skipped：PR 只跑 build + white-box，push 才會 build image。"},{"id":"ci-02","page":"ci","pageTitle":"CI 與發版","title":"needs 鏈與最小權限的 GITHUB_TOKEN","tldr":"GITHUB_TOKEN 預設只讀，只有 docker 與 release 各自加寫入權；寫 notes-deploy 用的是 deploy key。"},{"id":"ci-03","page":"ci","pageTitle":"CI 與發版","title":"build → white-box：進 image 的就是測過的那份","tldr":"build 測完把 dist 存成 artifact，white-box 另開 runner 掃描，web 分身下載同一份 dist 進 image。"},{"id":"ci-04","page":"ci","pageTitle":"CI 與發版","title":"docker matrix：兩個分身、兩種架構、各自的 cache","tldr":"matrix 開出 web / api 兩個分身，各自 build amd64 + arm64、推 sha-\u003c40 碼> tag，再用 Trivy 掃 image。"},{"id":"ops-05","page":"gitops","pageTitle":"GitOps 鏈路","title":"image tag 用 sha-40 碼 commit，staging 與 production 不是同一顆 image","tldr":"tag 用完整 40 碼 commit SHA：不會碰撞、能直接對回原始碼。production 跑的是 main 的 merge commit 重新 build 的 image，跟 staging 原始碼相同，但不是同一次 build。"}],"BS":[{"id":"ci-01","page":"ci","pageTitle":"CI 與發版","title":"一個事件會叫醒哪些 job","tldr":"on 決定 run 建不建立，各 job 的 if 決定執行或 skipped：PR 只跑 build + white-box，push 才會 build image。"},{"id":"ci-02","page":"ci","pageTitle":"CI 與發版","title":"needs 鏈與最小權限的 GITHUB_TOKEN","tldr":"GITHUB_TOKEN 預設只讀，只有 docker 與 release 各自加寫入權；寫 notes-deploy 用的是 deploy key。"},{"id":"ci-05","page":"ci","pageTitle":"CI 與發版","title":"concurrency 與「分支已前進」的競態保護","tldr":"同分支一次只跑一個 run、不取消舊的；bump 前再比對分支 HEAD，擋住舊 run 把舊 tag 寫回去。"},{"id":"ci-06","page":"ci","pageTitle":"CI 與發版","title":"bump job：把 image tag 寫進 notes-deploy","tldr":"用 deploy key checkout notes-deploy，kustomize 改兩行 newTag 後 commit、push，撞車就 rebase 重試一次。"},{"id":"ops-01","page":"gitops","pageTitle":"GitOps 鏈路","title":"GitOps：cluster 該長什麼樣，只看 notes-deploy 的 main","tldr":"唯一的真實來源是 notes-deploy 的 main。CI 只改 Git、從不連 cluster；Argo CD 在 cluster 裡把 Git 拉進來套用，這是 pull-based。"},{"id":"ops-02","page":"gitops","pageTitle":"GitOps 鏈路","title":"為什麼 manifest 放在另一個 repo","tldr":"notes 的 main / staging 是 classic branch protection，required check 沒有身分豁免。bot 的 bump commit 身上不會有 check，換任何 token 都推不進去，只能改寫一個不受保護的 repo。"},{"id":"ops-03","page":"gitops","pageTitle":"GitOps 鏈路","title":"deploy key：CI 怎麼拿到寫 notes-deploy 的權限","tldr":"GITHUB_TOKEN 只對 notes 自己有效。CI 用存成 secret 的 SSH 私鑰寫 notes-deploy；這種 push 會觸發 notes-deploy 的 Manifest Check，GITHUB_TOKEN 做出的 push 則不會觸發任何 workflow。"},{"id":"ops-05","page":"gitops","pageTitle":"GitOps 鏈路","title":"image tag 用 sha-40 碼 commit，staging 與 production 不是同一顆 image","tldr":"tag 用完整 40 碼 commit SHA：不會碰撞、能直接對回原始碼。production 跑的是 main 的 merge commit 重新 build 的 image，跟 staging 原始碼相同，但不是同一次 build。"},{"id":"cmd-06","page":"cmd","pageTitle":"k8s 指令","title":"kustomize：同一份運算在 CI、manifest-check、Argo CD 各跑一次","tldr":"kustomize build 不碰 cluster：CI 改 newTag、manifest-check 驗算、Argo CD 算同一份再 apply。"}],"BP":[{"id":"ci-01","page":"ci","pageTitle":"CI 與發版","title":"一個事件會叫醒哪些 job","tldr":"on 決定 run 建不建立，各 job 的 if 決定執行或 skipped：PR 只跑 build + white-box，push 才會 build image。"},{"id":"ci-02","page":"ci","pageTitle":"CI 與發版","title":"needs 鏈與最小權限的 GITHUB_TOKEN","tldr":"GITHUB_TOKEN 預設只讀，只有 docker 與 release 各自加寫入權；寫 notes-deploy 用的是 deploy key。"},{"id":"ci-05","page":"ci","pageTitle":"CI 與發版","title":"concurrency 與「分支已前進」的競態保護","tldr":"同分支一次只跑一個 run、不取消舊的；bump 前再比對分支 HEAD，擋住舊 run 把舊 tag 寫回去。"},{"id":"ci-06","page":"ci","pageTitle":"CI 與發版","title":"bump job：把 image tag 寫進 notes-deploy","tldr":"用 deploy key checkout notes-deploy，kustomize 改兩行 newTag 後 commit、push，撞車就 rebase 重試一次。"},{"id":"ci-07","page":"ci","pageTitle":"CI 與發版","title":"environment: production 的人工審核閘","tldr":"environment: production 讓 bump-production 在拿到 runner 前停在 Waiting，等人 Approve、Reject 或逾時。"},{"id":"ops-01","page":"gitops","pageTitle":"GitOps 鏈路","title":"GitOps：cluster 該長什麼樣，只看 notes-deploy 的 main","tldr":"唯一的真實來源是 notes-deploy 的 main。CI 只改 Git、從不連 cluster；Argo CD 在 cluster 裡把 Git 拉進來套用，這是 pull-based。"},{"id":"ops-02","page":"gitops","pageTitle":"GitOps 鏈路","title":"為什麼 manifest 放在另一個 repo","tldr":"notes 的 main / staging 是 classic branch protection，required check 沒有身分豁免。bot 的 bump commit 身上不會有 check，換任何 token 都推不進去，只能改寫一個不受保護的 repo。"},{"id":"ops-03","page":"gitops","pageTitle":"GitOps 鏈路","title":"deploy key：CI 怎麼拿到寫 notes-deploy 的權限","tldr":"GITHUB_TOKEN 只對 notes 自己有效。CI 用存成 secret 的 SSH 私鑰寫 notes-deploy；這種 push 會觸發 notes-deploy 的 Manifest Check，GITHUB_TOKEN 做出的 push 則不會觸發任何 workflow。"},{"id":"ops-05","page":"gitops","pageTitle":"GitOps 鏈路","title":"image tag 用 sha-40 碼 commit，staging 與 production 不是同一顆 image","tldr":"tag 用完整 40 碼 commit SHA：不會碰撞、能直接對回原始碼。production 跑的是 main 的 merge commit 重新 build 的 image，跟 staging 原始碼相同，但不是同一次 build。"},{"id":"cmd-06","page":"cmd","pageTitle":"k8s 指令","title":"kustomize：同一份運算在 CI、manifest-check、Argo CD 各跑一次","tldr":"kustomize build 不碰 cluster：CI 改 newTag、manifest-check 驗算、Argo CD 算同一份再 apply。"}],"ENV":[{"id":"ci-02","page":"ci","pageTitle":"CI 與發版","title":"needs 鏈與最小權限的 GITHUB_TOKEN","tldr":"GITHUB_TOKEN 預設只讀，只有 docker 與 release 各自加寫入權；寫 notes-deploy 用的是 deploy key。"},{"id":"ci-07","page":"ci","pageTitle":"CI 與發版","title":"environment: production 的人工審核閘","tldr":"environment: production 讓 bump-production 在拿到 runner 前停在 Waiting，等人 Approve、Reject 或逾時。"},{"id":"ops-05","page":"gitops","pageTitle":"GitOps 鏈路","title":"image tag 用 sha-40 碼 commit，staging 與 production 不是同一顆 image","tldr":"tag 用完整 40 碼 commit SHA：不會碰撞、能直接對回原始碼。production 跑的是 main 的 merge commit 重新 build 的 image，跟 staging 原始碼相同，但不是同一次 build。"}],"GHCR":[{"id":"ci-04","page":"ci","pageTitle":"CI 與發版","title":"docker matrix：兩個分身、兩種架構、各自的 cache","tldr":"matrix 開出 web / api 兩個分身，各自 build amd64 + arm64、推 sha-\u003c40 碼> tag，再用 Trivy 掃 image。"},{"id":"ops-01","page":"gitops","pageTitle":"GitOps 鏈路","title":"GitOps：cluster 該長什麼樣，只看 notes-deploy 的 main","tldr":"唯一的真實來源是 notes-deploy 的 main。CI 只改 Git、從不連 cluster；Argo CD 在 cluster 裡把 Git 拉進來套用，這是 pull-based。"},{"id":"ops-05","page":"gitops","pageTitle":"GitOps 鏈路","title":"image tag 用 sha-40 碼 commit，staging 與 production 不是同一顆 image","tldr":"tag 用完整 40 碼 commit SHA：不會碰撞、能直接對回原始碼。production 跑的是 main 的 merge commit 重新 build 的 image，跟 staging 原始碼相同，但不是同一次 build。"},{"id":"ops-08","page":"gitops","pageTitle":"GitOps 鏈路","title":"Rollback = revert bump commit；Synced 不代表是最新 commit","tldr":"退版就是在 notes-deploy revert 那個 bump commit，Argo CD 下一輪把舊 tag 套回去。判斷 Argo CD 有沒有看到最新 commit，要看 revision，不要看 Synced 兩個字。"},{"id":"k8s-07","page":"k8s","pageTitle":"k8s runtime","title":"image pull：kubelet 怎麼從 GHCR 拿到 arm64 那一份","tldr":"public package 用匿名 token 就拉得到，不需要 imagePullSecrets；tag 背後是 image index，containerd 自己挑 linux/arm64。tag 不存在時 restart 沒有用。"},{"id":"cmd-03","page":"cmd","pageTitle":"k8s 指令","title":"Pod 起不來：STATUS 決定下一個指令","tldr":"依 STATUS 分四條路：拉不到 image 看 Events、崩潰看 logs --previous、0/1 看 probe、1/1 查 endpoints。"}],"DEPLOY":[{"id":"ci-06","page":"ci","pageTitle":"CI 與發版","title":"bump job：把 image tag 寫進 notes-deploy","tldr":"用 deploy key checkout notes-deploy，kustomize 改兩行 newTag 後 commit、push，撞車就 rebase 重試一次。"},{"id":"ops-01","page":"gitops","pageTitle":"GitOps 鏈路","title":"GitOps：cluster 該長什麼樣，只看 notes-deploy 的 main","tldr":"唯一的真實來源是 notes-deploy 的 main。CI 只改 Git、從不連 cluster；Argo CD 在 cluster 裡把 Git 拉進來套用，這是 pull-based。"},{"id":"ops-02","page":"gitops","pageTitle":"GitOps 鏈路","title":"為什麼 manifest 放在另一個 repo","tldr":"notes 的 main / staging 是 classic branch protection，required check 沒有身分豁免。bot 的 bump commit 身上不會有 check，換任何 token 都推不進去，只能改寫一個不受保護的 repo。"},{"id":"ops-03","page":"gitops","pageTitle":"GitOps 鏈路","title":"deploy key：CI 怎麼拿到寫 notes-deploy 的權限","tldr":"GITHUB_TOKEN 只對 notes 自己有效。CI 用存成 secret 的 SSH 私鑰寫 notes-deploy；這種 push 會觸發 notes-deploy 的 Manifest Check，GITHUB_TOKEN 做出的 push 則不會觸發任何 workflow。"},{"id":"ops-04","page":"gitops","pageTitle":"GitOps 鏈路","title":"kustomize：一份 base、兩個 overlay 目錄","tldr":"base 放 5 份共用資源，overlay 只寫三種差異：namespace、兩個 image 的 newTag、Ingress host。kustomize build 把兩者合成完整 YAML，Argo CD 與 Manifest Check 跑的都是這一步。"},{"id":"ops-06","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD Application：一次 reconcile 做了什麼","tldr":"Application 告訴 Argo CD 讀哪個 repo 的哪個分支與目錄、套進哪個 namespace。預設約每 3 分鐘比對一次。Sync 看「跟 Git 一不一樣」，Health 看「跑得好不好」，兩條軸互相獨立。"},{"id":"ops-08","page":"gitops","pageTitle":"GitOps 鏈路","title":"Rollback = revert bump commit；Synced 不代表是最新 commit","tldr":"退版就是在 notes-deploy revert 那個 bump commit，Argo CD 下一輪把舊 tag 套回去。判斷 Argo CD 有沒有看到最新 commit，要看 revision，不要看 Synced 兩個字。"},{"id":"cmd-05","page":"cmd","pageTitle":"k8s 指令","title":"rollout：每個子指令改了哪個欄位，為什麼 undo 會被蓋回去","tldr":"restart 只加一個 annotation；undo 改回舊 image，會被 selfHeal 蓋回。rollback 要在 notes-deploy git revert。"},{"id":"cmd-06","page":"cmd","pageTitle":"k8s 指令","title":"kustomize：同一份運算在 CI、manifest-check、Argo CD 各跑一次","tldr":"kustomize build 不碰 cluster：CI 改 newTag、manifest-check 驗算、Argo CD 算同一份再 apply。"},{"id":"cmd-07","page":"cmd","pageTitle":"k8s 指令","title":"Argo CD：Application 是一個物件，Sync 與 Health 是兩個獨立判斷","tldr":"Application 是 argocd namespace 裡的物件：Sync 比 Git 與 live，Health 看資源本身，revision 說明讀到哪個 commit。"}],"LLM":[{"id":"ci-09","page":"ci","pageTitle":"CI 與發版","title":"LLM PR Assist：三個平行 job 與 Gemini fallback","tldr":"三個 job 平行呼叫 Gemini 再貼 PR 留言；失敗就貼 fallback，新 push 取消舊 run，不擋 merge。"}],"GEM":[{"id":"ci-09","page":"ci","pageTitle":"CI 與發版","title":"LLM PR Assist：三個平行 job 與 Gemini fallback","tldr":"三個 job 平行呼叫 Gemini 再貼 PR 留言；失敗就貼 fallback，新 push 取消舊 run，不擋 merge。"}],"ARGO":[{"id":"ops-01","page":"gitops","pageTitle":"GitOps 鏈路","title":"GitOps：cluster 該長什麼樣，只看 notes-deploy 的 main","tldr":"唯一的真實來源是 notes-deploy 的 main。CI 只改 Git、從不連 cluster；Argo CD 在 cluster 裡把 Git 拉進來套用，這是 pull-based。"},{"id":"ops-04","page":"gitops","pageTitle":"GitOps 鏈路","title":"kustomize：一份 base、兩個 overlay 目錄","tldr":"base 放 5 份共用資源，overlay 只寫三種差異：namespace、兩個 image 的 newTag、Ingress host。kustomize build 把兩者合成完整 YAML，Argo CD 與 Manifest Check 跑的都是這一步。"},{"id":"ops-06","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD Application：一次 reconcile 做了什麼","tldr":"Application 告訴 Argo CD 讀哪個 repo 的哪個分支與目錄、套進哪個 namespace。預設約每 3 分鐘比對一次。Sync 看「跟 Git 一不一樣」，Health 看「跑得好不好」，兩條軸互相獨立。"},{"id":"ops-07","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD UI 的 resource tree：每個節點是誰建的","tldr":"Git 裡只有 5 個物件：2 個 Deployment、2 個 Service、1 個 Ingress。樹上的 ReplicaSet、Pod、Endpoints 是 k8s controller 依這 5 個物件建出來的，Argo CD 依 ownerReferences 把它們掛上樹。"},{"id":"ops-08","page":"gitops","pageTitle":"GitOps 鏈路","title":"Rollback = revert bump commit；Synced 不代表是最新 commit","tldr":"退版就是在 notes-deploy revert 那個 bump commit，Argo CD 下一輪把舊 tag 套回去。判斷 Argo CD 有沒有看到最新 commit，要看 revision，不要看 Synced 兩個字。"},{"id":"k8s-01","page":"k8s","pageTitle":"k8s runtime","title":"環境全貌：Mac 裡的 VM 裡的單節點 k3s","tldr":"整個 cluster 是 Mac 上一台 6 GB 的 arm64 VM；control-plane 與 worker 是同一台，Traefik、ServiceLB、CoreDNS 都是 k3s 內建。"},{"id":"cmd-05","page":"cmd","pageTitle":"k8s 指令","title":"rollout：每個子指令改了哪個欄位，為什麼 undo 會被蓋回去","tldr":"restart 只加一個 annotation；undo 改回舊 image，會被 selfHeal 蓋回。rollback 要在 notes-deploy git revert。"},{"id":"cmd-06","page":"cmd","pageTitle":"k8s 指令","title":"kustomize：同一份運算在 CI、manifest-check、Argo CD 各跑一次","tldr":"kustomize build 不碰 cluster：CI 改 newTag、manifest-check 驗算、Argo CD 算同一份再 apply。"},{"id":"cmd-07","page":"cmd","pageTitle":"k8s 指令","title":"Argo CD：Application 是一個物件，Sync 與 Health 是兩個獨立判斷","tldr":"Application 是 argocd namespace 裡的物件：Sync 比 Git 與 live，Health 看資源本身，revision 說明讀到哪個 commit。"}],"K3S":[{"id":"ops-01","page":"gitops","pageTitle":"GitOps 鏈路","title":"GitOps：cluster 該長什麼樣，只看 notes-deploy 的 main","tldr":"唯一的真實來源是 notes-deploy 的 main。CI 只改 Git、從不連 cluster；Argo CD 在 cluster 裡把 Git 拉進來套用，這是 pull-based。"},{"id":"ops-06","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD Application：一次 reconcile 做了什麼","tldr":"Application 告訴 Argo CD 讀哪個 repo 的哪個分支與目錄、套進哪個 namespace。預設約每 3 分鐘比對一次。Sync 看「跟 Git 一不一樣」，Health 看「跑得好不好」，兩條軸互相獨立。"},{"id":"k8s-01","page":"k8s","pageTitle":"k8s runtime","title":"環境全貌：Mac 裡的 VM 裡的單節點 k3s","tldr":"整個 cluster 是 Mac 上一台 6 GB 的 arm64 VM；control-plane 與 worker 是同一台，Traefik、ServiceLB、CoreDNS 都是 k3s 內建。"},{"id":"k8s-02","page":"k8s","pageTitle":"k8s runtime","title":"Namespace：一個 cluster 放兩個環境","tldr":"物件的唯一鍵是 kind + namespace + name，所以兩個 notes-web 不衝突；namespace 隔開的是名稱，不是網路也不是資源。"},{"id":"k8s-07","page":"k8s","pageTitle":"k8s runtime","title":"image pull：kubelet 怎麼從 GHCR 拿到 arm64 那一份","tldr":"public package 用匿名 token 就拉得到，不需要 imagePullSecrets；tag 背後是 image index，containerd 自己挑 linux/arm64。tag 不存在時 restart 沒有用。"},{"id":"k8s-08","page":"k8s","pageTitle":"k8s runtime","title":"resources：requests 給 scheduler 看，limits 給 kernel 執行","tldr":"scheduler 只拿 requests 算放不放得下；limits 寫進 cgroup，CPU 超過會被限速，記憶體超過會被 OOMKilled。"},{"id":"cmd-01","page":"cmd","pageTitle":"k8s 指令","title":"kubectl 怎麼找到 cluster：kubeconfig 與一次 get pods","tldr":"kubectl 不存狀態：每條指令都先讀 kubeconfig 找到 VM:6443，再對 k3s API server 發一次 HTTPS request。"},{"id":"cmd-08","page":"cmd","pageTitle":"k8s 指令","title":"Multipass 與 k3s 主機層：cluster 底下那台 VM","tldr":"kubectl 逾時、IP 變了、AGE 不對時往下查 VM：multipass 管開關與 IP，VM 時鐘會跟 Mac 睡眠一起停。"}],"MC":[{"id":"ops-03","page":"gitops","pageTitle":"GitOps 鏈路","title":"deploy key：CI 怎麼拿到寫 notes-deploy 的權限","tldr":"GITHUB_TOKEN 只對 notes 自己有效。CI 用存成 secret 的 SSH 私鑰寫 notes-deploy；這種 push 會觸發 notes-deploy 的 Manifest Check，GITHUB_TOKEN 做出的 push 則不會觸發任何 workflow。"},{"id":"ops-04","page":"gitops","pageTitle":"GitOps 鏈路","title":"kustomize：一份 base、兩個 overlay 目錄","tldr":"base 放 5 份共用資源，overlay 只寫三種差異：namespace、兩個 image 的 newTag、Ingress host。kustomize build 把兩者合成完整 YAML，Argo CD 與 Manifest Check 跑的都是這一步。"},{"id":"cmd-06","page":"cmd","pageTitle":"k8s 指令","title":"kustomize：同一份運算在 CI、manifest-check、Argo CD 各跑一次","tldr":"kustomize build 不碰 cluster：CI 改 newTag、manifest-check 驗算、Argo CD 算同一份再 apply。"}],"NS_S":[{"id":"ops-06","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD Application：一次 reconcile 做了什麼","tldr":"Application 告訴 Argo CD 讀哪個 repo 的哪個分支與目錄、套進哪個 namespace。預設約每 3 分鐘比對一次。Sync 看「跟 Git 一不一樣」，Health 看「跑得好不好」，兩條軸互相獨立。"},{"id":"ops-07","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD UI 的 resource tree：每個節點是誰建的","tldr":"Git 裡只有 5 個物件：2 個 Deployment、2 個 Service、1 個 Ingress。樹上的 ReplicaSet、Pod、Endpoints 是 k8s controller 依這 5 個物件建出來的，Argo CD 依 ownerReferences 把它們掛上樹。"},{"id":"k8s-01","page":"k8s","pageTitle":"k8s runtime","title":"環境全貌：Mac 裡的 VM 裡的單節點 k3s","tldr":"整個 cluster 是 Mac 上一台 6 GB 的 arm64 VM；control-plane 與 worker 是同一台，Traefik、ServiceLB、CoreDNS 都是 k3s 內建。"},{"id":"k8s-02","page":"k8s","pageTitle":"k8s runtime","title":"Namespace：一個 cluster 放兩個環境","tldr":"物件的唯一鍵是 kind + namespace + name，所以兩個 notes-web 不衝突；namespace 隔開的是名稱，不是網路也不是資源。"},{"id":"k8s-03","page":"k8s","pageTitle":"k8s runtime","title":"Deployment → ReplicaSet → Pod：image tag 變了之後","tldr":"tag 一變就產生新的 ReplicaSet；replicas 1 的預設策略是先多開一個新 Pod，readinessProbe 通過之後才殺舊 Pod。"},{"id":"k8s-04","page":"k8s","pageTitle":"k8s runtime","title":"Service 與 label selector：流量怎麼找到 Pod","tldr":"Service 用 selector 挑 Pod，endpoints controller 把「符合 label 且 Ready」的 Pod IP 列成清單；少一個 label 就會選錯 Pod，而且不會報錯。"},{"id":"k8s-09","page":"k8s","pageTitle":"k8s runtime","title":"Traefik 回 no available server：從外往內排錯","tldr":"no available server 代表路由有對到，但那個 Service 的 endpoints 是空的：不是 selector 對不到 Pod，就是 Pod 還沒 Ready。"},{"id":"cmd-02","page":"cmd","pageTitle":"k8s 指令","title":"看狀態：get 讀物件本身，describe 多拉一份 Events","tldr":"get 只讀物件的 status，describe 多查一次 Events。READY 來自 readinessProbe，STATUS 是 reason 不是 phase。"},{"id":"cmd-03","page":"cmd","pageTitle":"k8s 指令","title":"Pod 起不來：STATUS 決定下一個指令","tldr":"依 STATUS 分四條路：拉不到 image 看 Events、崩潰看 logs --previous、0/1 看 probe、1/1 查 endpoints。"},{"id":"cmd-04","page":"cmd","pageTitle":"k8s 指令","title":"Pod 好好的但網址打不開：由外往內一層一層驗","tldr":"request 經過 /etc/hosts、Traefik、Ingress、Service、Pod 五關，每關有一個指令能單獨驗證。"},{"id":"cmd-07","page":"cmd","pageTitle":"k8s 指令","title":"Argo CD：Application 是一個物件，Sync 與 Health 是兩個獨立判斷","tldr":"Application 是 argocd namespace 裡的物件：Sync 比 Git 與 live，Health 看資源本身，revision 說明讀到哪個 commit。"}],"NS_P":[{"id":"ops-06","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD Application：一次 reconcile 做了什麼","tldr":"Application 告訴 Argo CD 讀哪個 repo 的哪個分支與目錄、套進哪個 namespace。預設約每 3 分鐘比對一次。Sync 看「跟 Git 一不一樣」，Health 看「跑得好不好」，兩條軸互相獨立。"},{"id":"ops-08","page":"gitops","pageTitle":"GitOps 鏈路","title":"Rollback = revert bump commit；Synced 不代表是最新 commit","tldr":"退版就是在 notes-deploy revert 那個 bump commit，Argo CD 下一輪把舊 tag 套回去。判斷 Argo CD 有沒有看到最新 commit，要看 revision，不要看 Synced 兩個字。"},{"id":"k8s-01","page":"k8s","pageTitle":"k8s runtime","title":"環境全貌：Mac 裡的 VM 裡的單節點 k3s","tldr":"整個 cluster 是 Mac 上一台 6 GB 的 arm64 VM；control-plane 與 worker 是同一台，Traefik、ServiceLB、CoreDNS 都是 k3s 內建。"},{"id":"k8s-02","page":"k8s","pageTitle":"k8s runtime","title":"Namespace：一個 cluster 放兩個環境","tldr":"物件的唯一鍵是 kind + namespace + name，所以兩個 notes-web 不衝突；namespace 隔開的是名稱，不是網路也不是資源。"},{"id":"k8s-05","page":"k8s","pageTitle":"k8s runtime","title":"一個 request 的完整路徑：瀏覽器到 Pod","tldr":"/etc/hosts 把網址指到 VM，ServiceLB 把 80 port 交給 Traefik，Traefik 依 host 與最長前綴挑 Service，再直接連 Pod IP。"},{"id":"cmd-02","page":"cmd","pageTitle":"k8s 指令","title":"看狀態：get 讀物件本身，describe 多拉一份 Events","tldr":"get 只讀物件的 status，describe 多查一次 Events。READY 來自 readinessProbe，STATUS 是 reason 不是 phase。"},{"id":"cmd-05","page":"cmd","pageTitle":"k8s 指令","title":"rollout：每個子指令改了哪個欄位，為什麼 undo 會被蓋回去","tldr":"restart 只加一個 annotation；undo 改回舊 image，會被 selfHeal 蓋回。rollback 要在 notes-deploy git revert。"},{"id":"cmd-07","page":"cmd","pageTitle":"k8s 指令","title":"Argo CD：Application 是一個物件，Sync 與 Health 是兩個獨立判斷","tldr":"Application 是 argocd namespace 裡的物件：Sync 比 Git 與 live，Health 看資源本身，revision 說明讀到哪個 commit。"}],"WEB_S":[{"id":"ops-07","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD UI 的 resource tree：每個節點是誰建的","tldr":"Git 裡只有 5 個物件：2 個 Deployment、2 個 Service、1 個 Ingress。樹上的 ReplicaSet、Pod、Endpoints 是 k8s controller 依這 5 個物件建出來的，Argo CD 依 ownerReferences 把它們掛上樹。"},{"id":"k8s-02","page":"k8s","pageTitle":"k8s runtime","title":"Namespace：一個 cluster 放兩個環境","tldr":"物件的唯一鍵是 kind + namespace + name，所以兩個 notes-web 不衝突；namespace 隔開的是名稱，不是網路也不是資源。"},{"id":"k8s-03","page":"k8s","pageTitle":"k8s runtime","title":"Deployment → ReplicaSet → Pod：image tag 變了之後","tldr":"tag 一變就產生新的 ReplicaSet；replicas 1 的預設策略是先多開一個新 Pod，readinessProbe 通過之後才殺舊 Pod。"},{"id":"k8s-04","page":"k8s","pageTitle":"k8s runtime","title":"Service 與 label selector：流量怎麼找到 Pod","tldr":"Service 用 selector 挑 Pod，endpoints controller 把「符合 label 且 Ready」的 Pod IP 列成清單；少一個 label 就會選錯 Pod，而且不會報錯。"},{"id":"k8s-06","page":"k8s","pageTitle":"k8s runtime","title":"容器裡面：nginx 與 Express 各自在做什麼","tldr":"web image 是 nginx 加上 build 好的 Vue 靜態檔，靠 try_files 撐 SPA；api image 是單層 node:22-alpine 跑 Express，資料只在記憶體。"},{"id":"k8s-07","page":"k8s","pageTitle":"k8s runtime","title":"image pull：kubelet 怎麼從 GHCR 拿到 arm64 那一份","tldr":"public package 用匿名 token 就拉得到，不需要 imagePullSecrets；tag 背後是 image index，containerd 自己挑 linux/arm64。tag 不存在時 restart 沒有用。"},{"id":"k8s-08","page":"k8s","pageTitle":"k8s runtime","title":"resources：requests 給 scheduler 看，limits 給 kernel 執行","tldr":"scheduler 只拿 requests 算放不放得下；limits 寫進 cgroup，CPU 超過會被限速，記憶體超過會被 OOMKilled。"},{"id":"cmd-02","page":"cmd","pageTitle":"k8s 指令","title":"看狀態：get 讀物件本身，describe 多拉一份 Events","tldr":"get 只讀物件的 status，describe 多查一次 Events。READY 來自 readinessProbe，STATUS 是 reason 不是 phase。"},{"id":"cmd-03","page":"cmd","pageTitle":"k8s 指令","title":"Pod 起不來：STATUS 決定下一個指令","tldr":"依 STATUS 分四條路：拉不到 image 看 Events、崩潰看 logs --previous、0/1 看 probe、1/1 查 endpoints。"},{"id":"cmd-04","page":"cmd","pageTitle":"k8s 指令","title":"Pod 好好的但網址打不開：由外往內一層一層驗","tldr":"request 經過 /etc/hosts、Traefik、Ingress、Service、Pod 五關，每關有一個指令能單獨驗證。"}],"API_S":[{"id":"ops-07","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD UI 的 resource tree：每個節點是誰建的","tldr":"Git 裡只有 5 個物件：2 個 Deployment、2 個 Service、1 個 Ingress。樹上的 ReplicaSet、Pod、Endpoints 是 k8s controller 依這 5 個物件建出來的，Argo CD 依 ownerReferences 把它們掛上樹。"},{"id":"k8s-03","page":"k8s","pageTitle":"k8s runtime","title":"Deployment → ReplicaSet → Pod：image tag 變了之後","tldr":"tag 一變就產生新的 ReplicaSet；replicas 1 的預設策略是先多開一個新 Pod，readinessProbe 通過之後才殺舊 Pod。"},{"id":"k8s-04","page":"k8s","pageTitle":"k8s runtime","title":"Service 與 label selector：流量怎麼找到 Pod","tldr":"Service 用 selector 挑 Pod，endpoints controller 把「符合 label 且 Ready」的 Pod IP 列成清單；少一個 label 就會選錯 Pod，而且不會報錯。"},{"id":"k8s-06","page":"k8s","pageTitle":"k8s runtime","title":"容器裡面：nginx 與 Express 各自在做什麼","tldr":"web image 是 nginx 加上 build 好的 Vue 靜態檔，靠 try_files 撐 SPA；api image 是單層 node:22-alpine 跑 Express，資料只在記憶體。"},{"id":"k8s-07","page":"k8s","pageTitle":"k8s runtime","title":"image pull：kubelet 怎麼從 GHCR 拿到 arm64 那一份","tldr":"public package 用匿名 token 就拉得到，不需要 imagePullSecrets；tag 背後是 image index，containerd 自己挑 linux/arm64。tag 不存在時 restart 沒有用。"},{"id":"k8s-08","page":"k8s","pageTitle":"k8s runtime","title":"resources：requests 給 scheduler 看，limits 給 kernel 執行","tldr":"scheduler 只拿 requests 算放不放得下；limits 寫進 cgroup，CPU 超過會被限速，記憶體超過會被 OOMKilled。"},{"id":"k8s-09","page":"k8s","pageTitle":"k8s runtime","title":"Traefik 回 no available server：從外往內排錯","tldr":"no available server 代表路由有對到，但那個 Service 的 endpoints 是空的：不是 selector 對不到 Pod，就是 Pod 還沒 Ready。"},{"id":"cmd-02","page":"cmd","pageTitle":"k8s 指令","title":"看狀態：get 讀物件本身，describe 多拉一份 Events","tldr":"get 只讀物件的 status，describe 多查一次 Events。READY 來自 readinessProbe，STATUS 是 reason 不是 phase。"},{"id":"cmd-03","page":"cmd","pageTitle":"k8s 指令","title":"Pod 起不來：STATUS 決定下一個指令","tldr":"依 STATUS 分四條路：拉不到 image 看 Events、崩潰看 logs --previous、0/1 看 probe、1/1 查 endpoints。"},{"id":"cmd-04","page":"cmd","pageTitle":"k8s 指令","title":"Pod 好好的但網址打不開：由外往內一層一層驗","tldr":"request 經過 /etc/hosts、Traefik、Ingress、Service、Pod 五關，每關有一個指令能單獨驗證。"}],"TRA":[{"id":"ops-07","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD UI 的 resource tree：每個節點是誰建的","tldr":"Git 裡只有 5 個物件：2 個 Deployment、2 個 Service、1 個 Ingress。樹上的 ReplicaSet、Pod、Endpoints 是 k8s controller 依這 5 個物件建出來的，Argo CD 依 ownerReferences 把它們掛上樹。"},{"id":"k8s-01","page":"k8s","pageTitle":"k8s runtime","title":"環境全貌：Mac 裡的 VM 裡的單節點 k3s","tldr":"整個 cluster 是 Mac 上一台 6 GB 的 arm64 VM；control-plane 與 worker 是同一台，Traefik、ServiceLB、CoreDNS 都是 k3s 內建。"},{"id":"k8s-02","page":"k8s","pageTitle":"k8s runtime","title":"Namespace：一個 cluster 放兩個環境","tldr":"物件的唯一鍵是 kind + namespace + name，所以兩個 notes-web 不衝突；namespace 隔開的是名稱，不是網路也不是資源。"},{"id":"k8s-05","page":"k8s","pageTitle":"k8s runtime","title":"一個 request 的完整路徑：瀏覽器到 Pod","tldr":"/etc/hosts 把網址指到 VM，ServiceLB 把 80 port 交給 Traefik，Traefik 依 host 與最長前綴挑 Service，再直接連 Pod IP。"},{"id":"k8s-09","page":"k8s","pageTitle":"k8s runtime","title":"Traefik 回 no available server：從外往內排錯","tldr":"no available server 代表路由有對到，但那個 Service 的 endpoints 是空的：不是 selector 對不到 Pod，就是 Pod 還沒 Ready。"},{"id":"cmd-04","page":"cmd","pageTitle":"k8s 指令","title":"Pod 好好的但網址打不開：由外往內一層一層驗","tldr":"request 經過 /etc/hosts、Traefik、Ingress、Service、Pod 五關，每關有一個指令能單獨驗證。"}],"BROWSER":[{"id":"k8s-01","page":"k8s","pageTitle":"k8s runtime","title":"環境全貌：Mac 裡的 VM 裡的單節點 k3s","tldr":"整個 cluster 是 Mac 上一台 6 GB 的 arm64 VM；control-plane 與 worker 是同一台，Traefik、ServiceLB、CoreDNS 都是 k3s 內建。"},{"id":"k8s-05","page":"k8s","pageTitle":"k8s runtime","title":"一個 request 的完整路徑：瀏覽器到 Pod","tldr":"/etc/hosts 把網址指到 VM，ServiceLB 把 80 port 交給 Traefik，Traefik 依 host 與最長前綴挑 Service，再直接連 Pod IP。"},{"id":"k8s-09","page":"k8s","pageTitle":"k8s runtime","title":"Traefik 回 no available server：從外往內排錯","tldr":"no available server 代表路由有對到，但那個 Service 的 endpoints 是空的：不是 selector 對不到 Pod，就是 Pod 還沒 Ready。"},{"id":"cmd-04","page":"cmd","pageTitle":"k8s 指令","title":"Pod 好好的但網址打不開：由外往內一層一層驗","tldr":"request 經過 /etc/hosts、Traefik、Ingress、Service、Pod 五關，每關有一個指令能單獨驗證。"}],"WEB_P":[{"id":"k8s-02","page":"k8s","pageTitle":"k8s runtime","title":"Namespace：一個 cluster 放兩個環境","tldr":"物件的唯一鍵是 kind + namespace + name，所以兩個 notes-web 不衝突；namespace 隔開的是名稱，不是網路也不是資源。"},{"id":"k8s-05","page":"k8s","pageTitle":"k8s runtime","title":"一個 request 的完整路徑：瀏覽器到 Pod","tldr":"/etc/hosts 把網址指到 VM，ServiceLB 把 80 port 交給 Traefik，Traefik 依 host 與最長前綴挑 Service，再直接連 Pod IP。"},{"id":"k8s-06","page":"k8s","pageTitle":"k8s runtime","title":"容器裡面：nginx 與 Express 各自在做什麼","tldr":"web image 是 nginx 加上 build 好的 Vue 靜態檔，靠 try_files 撐 SPA；api image 是單層 node:22-alpine 跑 Express，資料只在記憶體。"},{"id":"k8s-08","page":"k8s","pageTitle":"k8s runtime","title":"resources：requests 給 scheduler 看，limits 給 kernel 執行","tldr":"scheduler 只拿 requests 算放不放得下；limits 寫進 cgroup，CPU 超過會被限速，記憶體超過會被 OOMKilled。"},{"id":"cmd-02","page":"cmd","pageTitle":"k8s 指令","title":"看狀態：get 讀物件本身，describe 多拉一份 Events","tldr":"get 只讀物件的 status，describe 多查一次 Events。READY 來自 readinessProbe，STATUS 是 reason 不是 phase。"},{"id":"cmd-05","page":"cmd","pageTitle":"k8s 指令","title":"rollout：每個子指令改了哪個欄位，為什麼 undo 會被蓋回去","tldr":"restart 只加一個 annotation；undo 改回舊 image，會被 selfHeal 蓋回。rollback 要在 notes-deploy git revert。"}],"API_P":[{"id":"k8s-05","page":"k8s","pageTitle":"k8s runtime","title":"一個 request 的完整路徑：瀏覽器到 Pod","tldr":"/etc/hosts 把網址指到 VM，ServiceLB 把 80 port 交給 Traefik，Traefik 依 host 與最長前綴挑 Service，再直接連 Pod IP。"},{"id":"k8s-06","page":"k8s","pageTitle":"k8s runtime","title":"容器裡面：nginx 與 Express 各自在做什麼","tldr":"web image 是 nginx 加上 build 好的 Vue 靜態檔，靠 try_files 撐 SPA；api image 是單層 node:22-alpine 跑 Express，資料只在記憶體。"},{"id":"k8s-08","page":"k8s","pageTitle":"k8s runtime","title":"resources：requests 給 scheduler 看，limits 給 kernel 執行","tldr":"scheduler 只拿 requests 算放不放得下；limits 寫進 cgroup，CPU 超過會被限速，記憶體超過會被 OOMKilled。"},{"id":"cmd-02","page":"cmd","pageTitle":"k8s 指令","title":"看狀態：get 讀物件本身，describe 多拉一份 Events","tldr":"get 只讀物件的 status，describe 多查一次 Events。READY 來自 readinessProbe，STATUS 是 reason 不是 phase。"},{"id":"cmd-05","page":"cmd","pageTitle":"k8s 指令","title":"rollout：每個子指令改了哪個欄位，為什麼 undo 會被蓋回去","tldr":"restart 只加一個 annotation；undo 改回舊 image，會被 selfHeal 蓋回。rollback 要在 notes-deploy git revert。"}],"DEPLOYC":[{"id":"ci-06","page":"ci","pageTitle":"CI 與發版","title":"bump job：把 image tag 寫進 notes-deploy","tldr":"用 deploy key checkout notes-deploy，kustomize 改兩行 newTag 後 commit、push，撞車就 rebase 重試一次。"},{"id":"ops-01","page":"gitops","pageTitle":"GitOps 鏈路","title":"GitOps：cluster 該長什麼樣，只看 notes-deploy 的 main","tldr":"唯一的真實來源是 notes-deploy 的 main。CI 只改 Git、從不連 cluster；Argo CD 在 cluster 裡把 Git 拉進來套用，這是 pull-based。"},{"id":"ops-02","page":"gitops","pageTitle":"GitOps 鏈路","title":"為什麼 manifest 放在另一個 repo","tldr":"notes 的 main / staging 是 classic branch protection，required check 沒有身分豁免。bot 的 bump commit 身上不會有 check，換任何 token 都推不進去，只能改寫一個不受保護的 repo。"},{"id":"ops-03","page":"gitops","pageTitle":"GitOps 鏈路","title":"deploy key：CI 怎麼拿到寫 notes-deploy 的權限","tldr":"GITHUB_TOKEN 只對 notes 自己有效。CI 用存成 secret 的 SSH 私鑰寫 notes-deploy；這種 push 會觸發 notes-deploy 的 Manifest Check，GITHUB_TOKEN 做出的 push 則不會觸發任何 workflow。"},{"id":"ops-04","page":"gitops","pageTitle":"GitOps 鏈路","title":"kustomize：一份 base、兩個 overlay 目錄","tldr":"base 放 5 份共用資源，overlay 只寫三種差異：namespace、兩個 image 的 newTag、Ingress host。kustomize build 把兩者合成完整 YAML，Argo CD 與 Manifest Check 跑的都是這一步。"},{"id":"ops-06","page":"gitops","pageTitle":"GitOps 鏈路","title":"Argo CD Application：一次 reconcile 做了什麼","tldr":"Application 告訴 Argo CD 讀哪個 repo 的哪個分支與目錄、套進哪個 namespace。預設約每 3 分鐘比對一次。Sync 看「跟 Git 一不一樣」，Health 看「跑得好不好」，兩條軸互相獨立。"},{"id":"ops-08","page":"gitops","pageTitle":"GitOps 鏈路","title":"Rollback = revert bump commit；Synced 不代表是最新 commit","tldr":"退版就是在 notes-deploy revert 那個 bump commit，Argo CD 下一輪把舊 tag 套回去。判斷 Argo CD 有沒有看到最新 commit，要看 revision，不要看 Synced 兩個字。"},{"id":"cmd-05","page":"cmd","pageTitle":"k8s 指令","title":"rollout：每個子指令改了哪個欄位，為什麼 undo 會被蓋回去","tldr":"restart 只加一個 annotation；undo 改回舊 image，會被 selfHeal 蓋回。rollback 要在 notes-deploy git revert。"},{"id":"cmd-06","page":"cmd","pageTitle":"k8s 指令","title":"kustomize：同一份運算在 CI、manifest-check、Argo CD 各跑一次","tldr":"kustomize build 不碰 cluster：CI 改 newTag、manifest-check 驗算、Argo CD 算同一份再 apply。"},{"id":"cmd-07","page":"cmd","pageTitle":"k8s 指令","title":"Argo CD：Application 是一個物件，Sync 與 Health 是兩個獨立判斷","tldr":"Application 是 argocd namespace 裡的物件：Sync 比 Git 與 live，Health 看資源本身，revision 說明讀到哪個 commit。"}]}</script>
+<script src="seqviz.js"></script>
+<script src="archviz.js"></script>
+<script>
+  (function () {
+    var A = JSON.parse(document.getElementById('arch-data').textContent);
+    var K = JSON.parse(document.getElementById('kp-index').textContent);
+    ArchViz.mountFull(document.getElementById('arch'), A, K, document.getElementById('node-panel'));
+  })();
+</script>
