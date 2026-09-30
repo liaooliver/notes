@@ -27,6 +27,7 @@ feature/* ──PR──▶ staging ──PR──▶ main ──(approve)──
 | [docs/llm-pr-assist.md](docs/llm-pr-assist.md) | 用 Gemini 在 PR 上自動做 commit 建議、摘要、code review |
 | [docs/gitops-roadmap.md](docs/gitops-roadmap.md) | 已上線的 GitOps 鏈路：Docker → GHCR → Argo CD → k3s（M4 + Multipass 環境），Phase 0 ~ 9 的實作與踩坑紀錄 |
 | [導讀 Artifact](https://claude.ai/artifact/5tohUUhm9qZzQZPJgjTWca) | 互動式導讀頁：把上面幾份文件整理成可逐步播放的情境圖鑑 |
+| [k8s 故障演練圖鑑](https://claude.ai/artifact/Moh3bPcMZTqwTrUryUKdaz) | 14 題故障演練：在不受 Argo CD 管理的 `notes-lab` 動手弄壞一處，只靠 `kubectl` 找出根因，附逐步時序圖與 `notes-deploy` manifest 對照 |
 
 ## Workflow 檔案
 
@@ -38,4 +39,4 @@ feature/* ──PR──▶ staging ──PR──▶ main ──(approve)──
 
 ---
 
-*最後更新：2026-09-26*
+*最後更新：2026-09-30*
