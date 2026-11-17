@@ -3,6 +3,10 @@
 個人筆記存放區，同時是一個 CI/CD 練習場：從 commit 規範、分支策略、安全掃描、人工審核、自動發版，
 一路做到 Docker image、Argo CD 與 k3s 的 GitOps 部署，每一步都是真的跑過、真的踩過坑才寫下來的。
 
+## 專案架構
+
+![notes 專案架構圖：GitHub Actions 建置並推 image 到 GHCR、更新 notes-deploy，Argo CD 同步到 Mac 上 Multipass VM 裡的 k3s](docs/architecture.svg)
+
 ## 分支與流程
 
 ```
@@ -26,6 +30,7 @@ feature/* ──PR──▶ staging ──PR──▶ main ──(approve)──
 | [docs/release-automation.md](docs/release-automation.md) | commitlint / husky / semantic-release 的演進與踩坑紀錄 |
 | [docs/llm-pr-assist.md](docs/llm-pr-assist.md) | 用 Gemini 在 PR 上自動做 commit 建議、摘要、code review |
 | [docs/gitops-roadmap.md](docs/gitops-roadmap.md) | 已上線的 GitOps 鏈路：Docker → GHCR → Argo CD → k3s（M4 + Multipass 環境），Phase 0 ~ 9 的實作與踩坑紀錄 |
+| [docs/mac-to-vm-network.md](docs/mac-to-vm-network.md) | 從 Mac 的 curl 到 VM（k3s node）的網路路徑：`/etc/hosts`、路由表、ARP、bridge100、NAT，附逐步檢查指令 |
 | [導讀 Artifact](https://claude.ai/artifact/5tohUUhm9qZzQZPJgjTWca) | 互動式導讀頁：把上面幾份文件整理成可逐步播放的情境圖鑑 |
 
 ## Workflow 檔案
@@ -38,4 +43,4 @@ feature/* ──PR──▶ staging ──PR──▶ main ──(approve)──
 
 ---
 
-*最後更新：2026-09-26*
+*最後更新：2026-10-02*
