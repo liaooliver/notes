@@ -1,0 +1,214 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" width="1280" height="760" role="img" aria-labelledby="t d">
+  <title id="t">notes 專案架構圖</title>
+  <desc id="d">程式碼在 liaooliver/notes，GitHub Actions 建置並推 image 到 GHCR、改寫 liaooliver/notes-deploy 的 image tag；Mac 上 Multipass VM 裡的 Argo CD 讀 notes-deploy，同步到 k3s 的 notes-staging 與 notes-production 兩個 namespace，瀏覽器經 /etc/hosts 與 Traefik Ingress 連進服務。</desc>
+  <style>
+    :root {
+      --bg: #ffffff; --ink: #1f2328; --muted: #59636e; --line: #8c959f;
+      --zone: #f6f8fa; --zone-stroke: #d0d7de;
+      --node: #ffffff; --node-stroke: #afb8c1;
+      --accent: #1a7f64; --accent-bg: #e6f4ef;
+      --gate: #9a6700; --gate-bg: #fff8c5;
+      --blue: #0969da; --blue-bg: #ddf4ff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117; --ink: #e6edf3; --muted: #9198a1; --line: #6e7681;
+        --zone: #151b23; --zone-stroke: #30363d;
+        --node: #0d1117; --node-stroke: #3d444d;
+        --accent: #3fb68b; --accent-bg: #0f2a22;
+        --gate: #d29922; --gate-bg: #2b2111;
+        --blue: #4493f8; --blue-bg: #0c2340;
+      }
+    }
+    text { font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Segoe UI", sans-serif; fill: var(--ink); }
+    .bg { fill: var(--bg); }
+    .zone { fill: var(--zone); stroke: var(--zone-stroke); stroke-width: 1.2; }
+    .inner { fill: none; stroke: var(--zone-stroke); stroke-width: 1.2; stroke-dasharray: 5 4; }
+    .node { fill: var(--node); stroke: var(--node-stroke); stroke-width: 1.2; }
+    .acc { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.3; }
+    .gate { fill: var(--gate-bg); stroke: var(--gate); stroke-width: 1.3; }
+    .store { fill: var(--blue-bg); stroke: var(--blue); stroke-width: 1.3; }
+    .zt { font-size: 15px; font-weight: 700; }
+    .it { font-size: 12.5px; font-weight: 600; fill: var(--muted); }
+    .h { font-size: 13.5px; font-weight: 600; }
+    .s { font-size: 11.5px; fill: var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; fill: var(--muted); }
+    .lbl { font-size: 11px; fill: var(--muted); }
+    .ar { fill: none; stroke: var(--line); stroke-width: 1.5; marker-end: url(#ah); }
+    .ar.dash { stroke-dasharray: 5 4; }
+    .ar.gt { stroke: var(--gate); marker-end: url(#ahg); }
+    .mk { fill: var(--line); }
+    .mkg { fill: var(--gate); }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mkg" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1280" height="760"/>
+
+  <!-- ===== Zone 1: liaooliver/notes on GitHub ===== -->
+  <rect class="zone" x="20" y="20" width="440" height="710" rx="12"/>
+  <text class="zt" x="40" y="48">liaooliver/notes</text>
+  <text class="s" x="168" y="48">GitHub · 程式碼 + CI</text>
+
+  <!-- branches -->
+  <rect class="node" x="40" y="68" width="110" height="34" rx="17"/>
+  <text class="h" x="95" y="90" text-anchor="middle">feature/*</text>
+  <rect class="node" x="185" y="68" width="110" height="34" rx="17"/>
+  <text class="h" x="240" y="90" text-anchor="middle">staging</text>
+  <rect class="node" x="330" y="68" width="110" height="34" rx="17"/>
+  <text class="h" x="385" y="90" text-anchor="middle">main</text>
+  <path class="ar" d="M150,85 L183,85"/>
+  <path class="ar" d="M295,85 L328,85"/>
+  <text class="lbl" x="166" y="78" text-anchor="middle">PR</text>
+  <text class="lbl" x="312" y="78" text-anchor="middle">PR</text>
+  <path class="ar" d="M240,102 L240,138"/>
+  <path class="ar" d="M385,102 L385,120 L300,120 L300,138"/>
+  <text class="lbl" x="308" y="134">PR / push 觸發 ci.yml</text>
+
+  <!-- GitHub Actions -->
+  <rect class="inner" x="40" y="140" width="400" height="510" rx="10"/>
+  <text class="it" x="56" y="164">GitHub Actions · ci.yml</text>
+
+  <rect class="node" x="60" y="180" width="360" height="44" rx="8"/>
+  <text class="h" x="76" y="207">build · test</text>
+  <text class="s" x="404" y="207" text-anchor="end">vite build · vitest</text>
+  <path class="ar" d="M240,224 L240,242"/>
+
+  <rect class="node" x="60" y="244" width="360" height="44" rx="8"/>
+  <text class="h" x="76" y="271">white-box 掃描</text>
+  <text class="s" x="404" y="271" text-anchor="end">Semgrep · Trivy</text>
+  <path class="ar" d="M240,288 L240,306"/>
+
+  <rect class="acc" x="60" y="308" width="340" height="44" rx="8"/>
+  <text class="h" x="76" y="335">docker</text>
+  <text class="s" x="384" y="335" text-anchor="end">buildx · amd64 + arm64 · 2 個 image</text>
+
+  <path class="ar" d="M140,352 L140,378"/>
+  <text class="lbl" x="148" y="369">push staging</text>
+  <path class="ar gt" d="M320,352 L320,378"/>
+  <text class="lbl" x="328" y="369">push main</text>
+
+  <rect class="node" x="60" y="380" width="160" height="44" rx="8"/>
+  <text class="h" x="140" y="400" text-anchor="middle">bump-staging</text>
+  <text class="s" x="140" y="416" text-anchor="middle">不需審核</text>
+
+  <rect class="gate" x="240" y="380" width="160" height="44" rx="8"/>
+  <text class="h" x="320" y="400" text-anchor="middle">production 環境</text>
+  <text class="s" x="320" y="416" text-anchor="middle">人工 Approve</text>
+  <path class="ar gt" d="M320,424 L320,448"/>
+
+  <rect class="node" x="240" y="450" width="160" height="44" rx="8"/>
+  <text class="h" x="320" y="477" text-anchor="middle">bump-production</text>
+  <path class="ar" d="M320,494 L320,518"/>
+
+  <rect class="node" x="240" y="520" width="160" height="44" rx="8"/>
+  <text class="h" x="320" y="540" text-anchor="middle">release</text>
+  <text class="s" x="320" y="556" text-anchor="middle">semantic-release</text>
+
+  <!-- other workflows -->
+  <rect class="node" x="40" y="666" width="400" height="48" rx="8"/>
+  <text class="h" x="56" y="687">其他 workflow（所有 PR）</text>
+  <text class="s" x="56" y="704">commitlint.yml · llm-pr-assist.yml（Gemini 摘要 / review）</text>
+
+  <!-- ===== Zone 2: registries / deploy repo ===== -->
+  <rect class="store" x="500" y="300" width="240" height="82" rx="10"/>
+  <text class="h" x="516" y="324">GHCR</text>
+  <text class="s" x="724" y="324" text-anchor="end">image registry</text>
+  <text class="mono" x="516" y="346">ghcr.io/liaooliver/notes</text>
+  <text class="mono" x="516" y="364">ghcr.io/liaooliver/notes-api</text>
+
+  <rect class="store" x="500" y="530" width="240" height="100" rx="10"/>
+  <text class="h" x="516" y="554">liaooliver/notes-deploy</text>
+  <text class="s" x="516" y="572">k8s manifest（Kustomize）</text>
+  <text class="mono" x="516" y="594">base/</text>
+  <text class="mono" x="516" y="612">overlays/staging · production</text>
+
+  <!-- CI → GHCR / notes-deploy -->
+  <path class="ar" d="M400,330 L498,330"/>
+  <text class="lbl" x="449" y="322" text-anchor="middle">push image</text>
+  <path class="ar" d="M400,472 L480,472 L480,580 L498,580"/>
+  <path class="ar" d="M140,424 L140,620 L498,620"/>
+  <text class="lbl" x="152" y="612">commit 新 image tag（deploy key）</text>
+
+  <!-- ===== Zone 3: Mac / Multipass VM / k3s ===== -->
+  <rect class="zone" x="780" y="20" width="480" height="710" rx="12"/>
+  <text class="zt" x="800" y="48">Mac（Apple Silicon M4）</text>
+
+  <rect class="node" x="800" y="68" width="210" height="50" rx="8"/>
+  <text class="h" x="816" y="89">瀏覽器</text>
+  <text class="s" x="816" y="107">notes.local · notes-staging.local</text>
+  <rect class="node" x="1050" y="68" width="190" height="50" rx="8"/>
+  <text class="h" x="1066" y="89">/etc/hosts</text>
+  <text class="s" x="1066" y="107">網域 → VM IP</text>
+  <path class="ar" d="M1010,93 L1048,93"/>
+
+  <!-- VM -->
+  <rect class="inner" x="800" y="150" width="440" height="526" rx="10"/>
+  <text class="it" x="816" y="174">Multipass VM · Ubuntu arm64</text>
+
+  <!-- k3s -->
+  <rect class="inner" x="820" y="190" width="400" height="370" rx="10"/>
+  <text class="it" x="836" y="213">k3s 單節點叢集</text>
+
+  <path class="ar" d="M1145,118 L1145,226"/>
+  <text class="lbl" x="1153" y="140">VM IP:80</text>
+
+  <rect class="node" x="840" y="228" width="360" height="44" rx="8"/>
+  <text class="h" x="856" y="255">Traefik Ingress</text>
+  <text class="mono" x="1184" y="255" text-anchor="end">/ → notes · /api → notes-api</text>
+  <path class="ar" d="M930,272 L930,294"/>
+  <path class="ar" d="M1110,272 L1110,294"/>
+
+  <!-- namespace: staging -->
+  <rect class="acc" x="840" y="296" width="170" height="244" rx="10"/>
+  <text class="h" x="856" y="320">notes-staging</text>
+  <text class="s" x="856" y="337">namespace</text>
+  <rect class="node" x="856" y="352" width="138" height="52" rx="7"/>
+  <text class="h" x="870" y="374">notes</text>
+  <text class="s" x="870" y="392">Vue 3 · nginx</text>
+  <rect class="node" x="856" y="414" width="138" height="52" rx="7"/>
+  <text class="h" x="870" y="436">notes-api</text>
+  <text class="s" x="870" y="454">Express</text>
+  <text class="s" x="856" y="494">staging merge 後</text>
+  <text class="s" x="856" y="511">自動上線</text>
+
+  <!-- namespace: production -->
+  <rect class="gate" x="1030" y="296" width="170" height="244" rx="10"/>
+  <text class="h" x="1046" y="320">notes-production</text>
+  <text class="s" x="1046" y="337">namespace</text>
+  <rect class="node" x="1046" y="352" width="138" height="52" rx="7"/>
+  <text class="h" x="1060" y="374">notes</text>
+  <text class="s" x="1060" y="392">Vue 3 · nginx</text>
+  <rect class="node" x="1046" y="414" width="138" height="52" rx="7"/>
+  <text class="h" x="1060" y="436">notes-api</text>
+  <text class="s" x="1060" y="454">Express</text>
+  <text class="s" x="1046" y="494">人工 Approve 後</text>
+  <text class="s" x="1046" y="511">才會換版</text>
+
+  <!-- Argo CD -->
+  <rect class="acc" x="820" y="600" width="400" height="56" rx="8"/>
+  <text class="h" x="836" y="624">Argo CD</text>
+  <text class="s" x="836" y="643">比對 Git 的 desired state 與叢集 live state</text>
+  <path class="ar" d="M925,600 L925,542"/>
+  <path class="ar" d="M1115,600 L1115,542"/>
+  <text class="lbl" x="933" y="580">sync</text>
+  <text class="lbl" x="1123" y="580">sync</text>
+
+  <!-- notes-deploy → Argo CD, GHCR → k3s -->
+  <path class="ar dash" d="M740,628 L818,628"/>
+  <text class="lbl" x="760" y="620">poll 3 min</text>
+  <path class="ar dash" d="M740,341 L838,341"/>
+  <text class="lbl" x="760" y="333">pull arm64</text>
+
+  <!-- legend -->
+  <g transform="translate(500,672)">
+    <path class="ar" d="M0,8 L36,8"/>
+    <text class="lbl" x="44" y="12">寫入 / 觸發</text>
+    <path class="ar dash" d="M120,8 L156,8"/>
+    <text class="lbl" x="164" y="12">讀取 / 拉取</text>
+    <path class="ar gt" d="M0,34 L36,34"/>
+    <text class="lbl" x="44" y="38">需要人工審核的路徑</text>
+  </g>
+</svg>
